@@ -1,0 +1,6 @@
+.env
+.venv/
+uploads/
+clips_output/   
+static/
+__pycache__/

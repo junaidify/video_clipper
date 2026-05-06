@@ -1,0 +1,95 @@
+# Video Auto-Clipper — Project Tracker
+
+## Overview
+Analyzes video content via transcript, detects hook-worthy moments (key quotes, interesting points, emotional peaks), and **automatically splits the video into short vertical clips** for TikTok / Reels / YouTube Shorts.
+
+## Architecture
+
+```
+video_clipper/
+├── app.py              # Flask web server (main entry for web UI)
+├── main.py             # CLI entry point (standalone usage)
+├── config.py           # Dataclass configs for all modules
+├── transcriber.py      # Whisper-based audio transcription
+├── analyzer.py         # NLP content analysis (TF-IDF, keywords, sentiment)
+├── llm_analyzer.py     # Optional LLM fallback (Groq, Gemini, NVIDIA)
+├── clipper.py          # FFmpeg video splitting + 9:16 crop
+├── downloader.py       # YouTube/URL download via yt-dlp
+├── .env                # API keys (GROQ, GEMINI, NVIDIA) — NOT committed
+├── .env.example        # Template for .env
+├── requirements.txt    # Python dependencies
+├── templates/
+│   └── index.html      # Web UI frontend
+├── uploads/            # Temp storage for uploaded/downloaded videos
+└── clips_output/       # Generated clips organized by job ID
+```
+
+## Pipeline (3 stages)
+1. **Transcribe** — Whisper extracts word-level timestamps from audio
+2. **Analyze** — NLP scores segments across 5 dimensions (TF-IDF, quotes, keywords, sentiment, position). LLM fallback kicks in only if NLP finds <2 candidates.
+3. **Split** — FFmpeg cuts video into separate MP4 files with smart boundaries, 9:16 crop, fade transitions
+
+## API Keys (.env)
+| Key | Provider | Required? | Purpose |
+|-----|----------|-----------|---------|
+| `GROQ_API_KEY` | Groq | Optional | LLM fallback via Llama/Mixtral |
+| `GEMINI_API_KEY` | Google | Optional | LLM fallback via Gemini |
+| `NVIDIA_API_KEY` | NVIDIA NIM | Optional | LLM fallback via NVIDIA models |
+
+NLP-only mode works without any API keys. LLM is fallback only.
+
+## How to Run
+
+### Web UI (recommended)
+```bash
+pip install -r requirements.txt
+python app.py
+# Open http://localhost:5000
+```
+
+### CLI
+```bash
+python main.py video.mp4 --output ./clips --max-clips 5
+```
+
+## System Requirements
+- Python 3.9+
+- FFmpeg installed and on PATH
+- ~2GB disk for Whisper model (first run downloads it)
+
+## Changelog
+
+### v2.1 — 2026-05-06
+- Fixed: YouTube download crash when FFmpeg is not installed
+- Downloader now auto-detects FFmpeg and falls back to single combined stream (lower quality but works)
+- Web UI shows FFmpeg warning banner when missing
+- Settings API returns `ffmpeg_installed` status
+- FFmpeg badge added to settings panel
+
+### v2.0 — 2026-05-05
+- Added Flask web UI (upload video or paste YouTube URL)
+- Added YouTube/URL download support via yt-dlp
+- Added LLM fallback analyzer (Groq, Gemini, NVIDIA)
+- Added .env for API key management
+- Added real-time progress tracking in web UI
+- Added video preview + download for generated clips
+
+### v1.0 — 2026-05-05
+- Initial NLP-based content analyzer (TF-IDF, keywords, sentiment, quotes, position scoring)
+- Whisper transcription with word-level timestamps
+- FFmpeg video splitting with smart boundary detection
+- 9:16 vertical crop for TikTok/Reels/Shorts
+- CLI interface with configurable parameters
+
+## Known Limitations
+- Whisper transcription can be slow on CPU for long videos (use `--model tiny` or `--device cuda`)
+- NLP scoring works best on English content
+- No face-tracking for crop centering (uses center-crop)
+- Single-threaded clip extraction (clips are cut sequentially)
+
+## Future Ideas
+- Face detection for smart crop positioning
+- Subtitle burn-in on clips
+- Batch processing (multiple videos)
+- Auto-upload to TikTok/YouTube via API
+- Thumbnail generation for each clip

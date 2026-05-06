@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Auto-Clipper</title>
+    <style>
+        :root {
+            --bg: #0f0f0f;
+            --surface: #1a1a2e;
+            --surface-2: #16213e;
+            --accent: #e94560;
+            --accent-glow: rgba(233, 69, 96, 0.3);
+            --text: #eee;
+            --text-dim: #888;
+            --border: #2a2a4a;
+            --success: #00c853;
+            --warning: #ffd600;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* ─── Header ─── */
+        .header {
+            text-align: center;
+            padding: 40px 20px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), #ff6b6b, #ffd93d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header p {
+            color: var(--text-dim);
+            margin-top: 8px;
+            font-size: 0.95rem;
+        }
+
+        /* ─── Container ─── */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        /* ─── Tabs ─── */
+        .tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 24px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .tab {
+            flex: 1;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            background: var(--surface);
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: none;
+            color: var(--text-dim);
+        }
+        .tab:hover { background: var(--surface-2); }
+        .tab.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* ─── Input Panels ─── */
+        .input-panel {
+            display: none;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 24px;
+        }
+        .input-panel.active { display: block; }
+
+        /* URL Input */
+        .url-input-group {
+            display: flex;
+            gap: 12px;
+        }
+        .url-input-group input {
+            flex: 1;
+            padding: 14px 18px;
+            border-radius: 10px;
+            border: 2px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .url-input-group input:focus {
+            border-color: var(--accent);
+        }
+        .url-input-group input::placeholder {
+            color: var(--text-dim);
+        }
+
+        /* File Upload Zone */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 50px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--accent);
+            background: rgba(233, 69, 96, 0.05);
+        }
+        .upload-zone .icon { font-size: 3rem; margin-bottom: 12px; }
+        .upload-zone p { color: var(--text-dim); }
+        .upload-zone .filename {
+            color: var(--accent);
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* ─── Settings ─── */
+        .settings-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+            transition: all 0.2s;
+        }
+        .settings-toggle:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+        .settings-panel {
+            display: none;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .settings-panel.open { display: block; }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .setting-item label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+        .setting-item select,
+        .setting-item input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+        .setting-item .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-top: 8px;
+        }
+        .setting-item .checkbox-row input[type="checkbox"] {
+            width: auto;
+            accent-color: var(--accent);
+        }
+        .llm-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .llm-badge.configured { background: rgba(0,200,83,0.2); color: var(--success); }
+        .llm-badge.missing { background: rgba(255,214,0,0.2); color: var(--warning); }
+
+        /* ─── Process Button ─── */
+        .btn-process {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent), #c0392b);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 20px var(--accent-glow);
+        }
+        .btn-process:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px var(--accent-glow);
+        }
+        .btn-process:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ─── Progress ─── */
+        .progress-section {
+            display: none;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+        .progress-section.active { display: block; }
+        .progress-bar-container {
+            height: 8px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 16px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #ff6b6b);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+        .progress-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .progress-message { color: var(--text-dim); font-size: 0.9rem; }
+        .progress-percent { color: var(--accent); font-weight: 700; }
+
+        .steps {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .step {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            background: var(--bg);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+        .step.active { border-color: var(--accent); color: var(--accent); }
+        .step.done { border-color: var(--success); color: var(--success); background: rgba(0,200,83,0.05); }
+
+        /* ─── Results ─── */
+        .results-section {
+            display: none;
+            margin-top: 24px;
+        }
+        .results-section.active { display: block; }
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .results-header h2 { font-size: 1.3rem; }
+        .clip-count {
+            background: var(--accent);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+
+        .clips-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+        .clip-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .clip-card:hover { border-color: var(--accent); }
+        .clip-video {
+            width: 100%;
+            max-height: 400px;
+            background: #000;
+        }
+        .clip-info {
+            padding: 16px;
+        }
+        .clip-info .clip-meta {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .clip-tag {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .clip-tag.score { background: rgba(233,69,96,0.2); color: var(--accent); }
+        .clip-tag.time { background: rgba(100,100,200,0.2); color: #aab; }
+        .clip-tag.reason { background: rgba(0,200,83,0.15); color: var(--success); }
+        .clip-hook-text {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin-top: 8px;
+            font-style: italic;
+        }
+        .clip-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .btn-download {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-download:hover {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* ─── Error ─── */
+        .error-message {
+            background: rgba(233,69,96,0.1);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 16px;
+            border-radius: 10px;
+            margin-top: 16px;
+            display: none;
+        }
+        .error-message.active { display: block; }
+
+        /* ─── Warning Banner ─── */
+        .warning-banner {
+            background: rgba(255, 214, 0, 0.1);
+            border: 1px solid var(--warning);
+            color: var(--warning);
+            padding: 14px 18px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            display: none;
+            line-height: 1.6;
+        }
+        .warning-banner.active { display: block; }
+        .warning-banner code {
+            background: rgba(255,214,0,0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        /* ─── API Keys Section ─── */
+        .api-status {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 600px) {
+            .settings-grid { grid-template-columns: 1fr; }
+            .url-input-group { flex-direction: column; }
+            .header h1 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Video Auto-Clipper</h1>
+    <p>Upload a video or paste a YouTube link — AI finds the hooks and splits it into short clips</p>
+</div>
+
+<div class="container">
+
+    <!-- FFmpeg Warning -->
+    <div class="warning-banner" id="ffmpeg-warning">
+        <strong>FFmpeg not found.</strong> Download will work but at lower quality.
+        Clip splitting will NOT work without FFmpeg.<br>
+        Install it: <code>winget install ffmpeg</code> then restart the app.
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab active" data-tab="url" onclick="switchTab('url')">
+            Paste YouTube Link
+        </button>
+        <button class="tab" data-tab="upload" onclick="switchTab('upload')">
+            Upload Video
+        </button>
+    </div>
+
+    <!-- URL Input -->
+    <div class="input-panel active" id="panel-url">
+        <div class="url-input-group">
+            <input type="text" id="video-url" placeholder="https://www.youtube.com/watch?v=..."
+                   autocomplete="off" spellcheck="false">
+        </div>
+        <p style="color: var(--text-dim); font-size: 0.8rem; margin-top: 10px;">
+            Supports: YouTube, YouTube Shorts, TikTok, Instagram Reels, X/Twitter
+        </p>
+    </div>
+
+    <!-- Upload Input -->
+    <div class="input-panel" id="panel-upload">
+        <div class="upload-zone" id="upload-zone">
+            <div class="icon">&#128253;</div>
+            <p>Drag & drop your video here, or click to browse</p>
+            <p style="font-size: 0.8rem; margin-top: 8px;">MP4, AVI, MOV, MKV, WebM — up to 2GB</p>
+            <div class="filename" id="file-name"></div>
+            <input type="file" id="video-file" accept=".mp4,.avi,.mov,.mkv,.webm,.flv,.wmv,.m4v">
+        </div>
+    </div>
+
+    <!-- Settings -->
+    <button class="settings-toggle" onclick="toggleSettings()">
+        Settings &amp; API Keys
+    </button>
+
+    <div class="settings-panel" id="settings-panel">
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>Whisper Model</label>
+                <select id="model-size">
+                    <option value="tiny">Tiny (fastest, least accurate)</option>
+                    <option value="base" selected>Base (balanced)</option>
+                    <option value="small">Small (better accuracy)</option>
+                    <option value="medium">Medium (high accuracy)</option>
+                    <option value="large">Large (best, slowest)</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label>Max Clips</label>
+                <input type="number" id="max-clips" value="10" min="1" max="50">
+            </div>
+            <div class="setting-item">
+                <label>Min Hook Score (0-1)</label>
+                <input type="number" id="min-score" value="0.4" min="0.1" max="0.9" step="0.05">
+            </div>
+            <div class="setting-item">
+                <label>Min Clip Duration (sec)</label>
+                <input type="number" id="min-duration" value="15" min="5" max="120">
+            </div>
+            <div class="setting-item">
+                <label>Max Clip Duration (sec)</label>
+                <input type="number" id="max-duration" value="60" min="10" max="180">
+            </div>
+            <div class="setting-item">
+                <div class="checkbox-row">
+                    <input type="checkbox" id="crop-vertical" checked>
+                    <label for="crop-vertical" style="margin:0">Crop to 9:16 (TikTok/Reels)</label>
+                </div>
+            </div>
+        </div>
+
+        <hr style="border-color: var(--border); margin: 20px 0;">
+        <h3 style="font-size: 0.95rem; margin-bottom: 12px;">LLM Fallback (Optional)</h3>
+        <p style="color: var(--text-dim); font-size: 0.8rem; margin-bottom: 12px;">
+            NLP analysis runs first. LLM only activates if NLP finds too few hooks. Configure API keys in the <code>.env</code> file.
+        </p>
+        <div class="api-status" id="api-status"></div>
+        <div class="setting-item" style="margin-top: 12px;">
+            <div class="checkbox-row">
+                <input type="checkbox" id="use-llm">
+                <label for="use-llm" style="margin:0">Enable LLM fallback (uses API keys from .env)</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Process Button -->
+    <button class="btn-process" id="btn-process" onclick="startProcessing()">
+        Analyze &amp; Split Video
+    </button>
+
+    <!-- Error -->
+    <div class="error-message" id="error-message"></div>
+
+    <!-- Progress -->
+    <div class="progress-section" id="progress-section">
+        <h3 style="margin-bottom: 4px;">Processing</h3>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div class="progress-status">
+            <span class="progress-message" id="progress-message">Starting...</span>
+            <span class="progress-percent" id="progress-percent">0%</span>
+        </div>
+        <div class="steps">
+            <div class="step" id="step-download">Download</div>
+            <div class="step" id="step-transcribe">Transcribe</div>
+            <div class="step" id="step-analyze">Analyze</div>
+            <div class="step" id="step-split">Split</div>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div class="results-section" id="results-section">
+        <div class="results-header">
+            <h2>Generated Clips</h2>
+            <span class="clip-count" id="clip-count">0 clips</span>
+        </div>
+        <div class="clips-grid" id="clips-grid"></div>
+    </div>
+
+</div>
+
+<script>
+    // ─── Tab Switching ───
+    function switchTab(tab) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.input-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+        document.getElementById(`panel-${tab}`).classList.add('active');
+    }
+
+    // ─── File Upload ───
+    const fileInput = document.getElementById('video-file');
+    const uploadZone = document.getElementById('upload-zone');
+    const fileName = document.getElementById('file-name');
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files[0]) {
+            fileName.textContent = e.target.files[0].name;
+        }
+    });
+
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+    });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        if (e.dataTransfer.files[0]) {
+            fileInput.files = e.dataTransfer.files;
+            fileName.textContent = e.dataTransfer.files[0].name;
+        }
+    });
+
+    // ─── Settings Toggle ───
+    function toggleSettings() {
+        document.getElementById('settings-panel').classList.toggle('open');
+    }
+
+    // ─── Load API Key Status ───
+    async function loadApiStatus() {
+        try {
+            const res = await fetch('/api/settings');
+            const data = await res.json();
+            const container = document.getElementById('api-status');
+            container.innerHTML = `
+                <span class="llm-badge ${data.ffmpeg_installed ? 'configured' : 'missing'}">
+                    FFmpeg: ${data.ffmpeg_installed ? 'Installed' : 'NOT FOUND'}
+                </span>
+                <span class="llm-badge ${data.groq_configured ? 'configured' : 'missing'}">
+                    Groq: ${data.groq_configured ? 'Configured' : 'Not Set'}
+                </span>
+                <span class="llm-badge ${data.gemini_configured ? 'configured' : 'missing'}">
+                    Gemini: ${data.gemini_configured ? 'Configured' : 'Not Set'}
+                </span>
+                <span class="llm-badge ${data.nvidia_configured ? 'configured' : 'missing'}">
+                    NVIDIA: ${data.nvidia_configured ? 'Configured' : 'Not Set'}
+                </span>
+            `;
+
+            // Show FFmpeg warning banner if missing
+            if (!data.ffmpeg_installed) {
+                document.getElementById('ffmpeg-warning').classList.add('active');
+            }
+        } catch (e) {
+            console.log('Could not load API status');
+        }
+    }
+    loadApiStatus();
+
+    // ─── Processing ───
+    let pollInterval = null;
+
+    async function startProcessing() {
+        const btn = document.getElementById('btn-process');
+        const errorEl = document.getElementById('error-message');
+        errorEl.classList.remove('active');
+
+        // Determine input type
+        const activeTab = document.querySelector('.tab.active').dataset.tab;
+        const formData = new FormData();
+
+        if (activeTab === 'url') {
+            const url = document.getElementById('video-url').value.trim();
+            if (!url) {
+                showError('Please enter a video URL');
+                return;
+            }
+            formData.append('url', url);
+        } else {
+            const file = fileInput.files[0];
+            if (!file) {
+                showError('Please select a video file');
+                return;
+            }
+            formData.append('video', file);
+        }
+
+        // Add settings
+        formData.append('model_size', document.getElementById('model-size').value);
+        formData.append('max_clips', document.getElementById('max-clips').value);
+        formData.append('min_score', document.getElementById('min-score').value);
+        formData.append('min_duration', document.getElementById('min-duration').value);
+        formData.append('max_duration', document.getElementById('max-duration').value);
+        formData.append('crop_vertical', document.getElementById('crop-vertical').checked);
+        formData.append('use_llm', document.getElementById('use-llm').checked);
+
+        // Disable button, show progress
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+        document.getElementById('progress-section').classList.add('active');
+        document.getElementById('results-section').classList.remove('active');
+        resetSteps();
+
+        try {
+            const res = await fetch('/api/process', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            if (data.error) {
+                showError(data.error);
+                btn.disabled = false;
+                btn.textContent = 'Analyze & Split Video';
+                return;
+            }
+
+            // Start polling for status
+            pollInterval = setInterval(() => pollStatus(data.job_id), 1500);
+        } catch (e) {
+            showError('Failed to start processing: ' + e.message);
+            btn.disabled = false;
+            btn.textContent = 'Analyze & Split Video';
+        }
+    }
+
+    async function pollStatus(jobId) {
+        try {
+            const res = await fetch(`/api/status/${jobId}`);
+            const data = await res.json();
+
+            // Update progress
+            const bar = document.getElementById('progress-bar');
+            const msg = document.getElementById('progress-message');
+            const pct = document.getElementById('progress-percent');
+
+            bar.style.width = (data.progress || 0) + '%';
+            msg.textContent = data.message || data.status;
+            pct.textContent = (data.progress || 0) + '%';
+
+            // Update steps
+            updateSteps(data.status);
+
+            if (data.status === 'completed') {
+                clearInterval(pollInterval);
+                document.getElementById('btn-process').disabled = false;
+                document.getElementById('btn-process').textContent = 'Analyze & Split Video';
+
+                if (data.clips && data.clips.length > 0) {
+                    showResults(data.clips);
+                }
+            } else if (data.status === 'error') {
+                clearInterval(pollInterval);
+                showError(data.error || 'Processing failed');
+                document.getElementById('btn-process').disabled = false;
+                document.getElementById('btn-process').textContent = 'Analyze & Split Video';
+            }
+        } catch (e) {
+            console.error('Poll error:', e);
+        }
+    }
+
+    function updateSteps(status) {
+        const stepMap = {
+            'downloading': 'step-download',
+            'transcribing': 'step-transcribe',
+            'analyzing': 'step-analyze',
+            'splitting': 'step-split',
+        };
+        const order = ['downloading', 'transcribing', 'analyzing', 'splitting'];
+        const currentIdx = order.indexOf(status);
+
+        order.forEach((s, i) => {
+            const el = document.getElementById(stepMap[s]);
+            if (i < currentIdx) el.className = 'step done';
+            else if (i === currentIdx) el.className = 'step active';
+            else el.className = 'step';
+        });
+
+        if (status === 'completed') {
+            Object.values(stepMap).forEach(id => {
+                document.getElementById(id).className = 'step done';
+            });
+        }
+    }
+
+    function resetSteps() {
+        ['step-download', 'step-transcribe', 'step-analyze', 'step-split']
+            .forEach(id => document.getElementById(id).className = 'step');
+    }
+
+    function showResults(clips) {
+        const section = document.getElementById('results-section');
+        const grid = document.getElementById('clips-grid');
+        const count = document.getElementById('clip-count');
+
+        section.classList.add('active');
+        count.textContent = clips.length + ' clip' + (clips.length !== 1 ? 's' : '');
+        grid.innerHTML = '';
+
+        clips.forEach(clip => {
+            const card = document.createElement('div');
+            card.className = 'clip-card';
+            card.innerHTML = `
+                <video class="clip-video" controls preload="metadata">
+                    <source src="${clip.url}" type="video/mp4">
+                </video>
+                <div class="clip-info">
+                    <div class="clip-meta">
+                        <span class="clip-tag score">Score: ${clip.score.toFixed(3)}</span>
+                        <span class="clip-tag time">${clip.start.toFixed(1)}s - ${clip.end.toFixed(1)}s (${clip.duration.toFixed(0)}s)</span>
+                        <span class="clip-tag reason">${clip.reason.replace(/_/g, ' ')}</span>
+                    </div>
+                    <div class="clip-hook-text">"${clip.hook_text}"</div>
+                    <div class="clip-actions">
+                        <a class="btn-download" href="${clip.url}" download="${clip.filename}">Download Clip</a>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function showError(msg) {
+        const el = document.getElementById('error-message');
+        el.textContent = msg;
+        el.classList.add('active');
+    }
+</script>
+
+</body>
+</html>

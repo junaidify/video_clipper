@@ -1,0 +1,10 @@
+# Core
+openai-whisper>=20231117
+flask>=3.0
+python-dotenv>=1.0
+yt-dlp>=2024.0
+
+# LLM Fallback (optional — install only what you need)
+groq>=0.9
+google-generativeai>=0.7
+openai>=1.30           # for NVIDIA NIM (OpenAI-compatible API)
