@@ -121,8 +121,9 @@ def download_video(url: str, output_dir: str,
     try:
         import yt_dlp
 
-        # Output template — sanitized filename
-        output_template = str(output_dir / '%(title).80s_%(id)s.%(ext)s')
+        # Output template — use video ID only (avoids Unicode filename issues on Windows)
+        # Non-ASCII titles (Hindi, Arabic, Chinese, etc.) crash Windows subprocess encoding
+        output_template = str(output_dir / '%(id)s.%(ext)s')
 
         ffmpeg_available = _has_ffmpeg()
 

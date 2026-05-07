@@ -3,8 +3,9 @@ Video Clipper Module
 Actually splits the video into short clips using FFmpeg.
 
 Features:
-- Smart boundary adjustment (snap to nearest scene cut / silence)
-- 9:16 vertical crop with center-weighted face detection fallback
+- Smart boundary adjustment
+- 9:16 vertical fit with blurred background fill (YouTube Shorts style)
+  — no content is cropped or lost, video shrinks to fit
 - Fade in/out transitions
 - Quality-optimized encoding for social platforms
 - Duration enforcement (min/max bounds)
@@ -67,7 +68,9 @@ class VideoClipper:
             "-show_streams", "-show_format",
             video_path
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            cmd, capture_output=True, encoding='utf-8', errors='replace', check=True
+        )
         return json.loads(result.stdout)
 
     def _get_video_dimensions(self, video_path: str) -> tuple:
@@ -78,38 +81,64 @@ class VideoClipper:
                 return int(stream["width"]), int(stream["height"])
         raise ValueError("No video stream found")
 
-    def _build_crop_filter(self, src_width: int, src_height: int) -> str:
+    def _build_vertical_filter_complex(self, src_width: int, src_height: int,
+                                       duration: float) -> str:
         """
-        Build FFmpeg crop + scale filter for 9:16 vertical output.
+        Build FFmpeg filter_complex for 9:16 output WITHOUT cropping.
 
-        Strategy:
-        - Calculate the largest 9:16 rectangle that fits inside the source
-        - Center-crop (works well for talking-head content)
-        - Scale to target resolution
+        Strategy (YouTube Shorts style):
+        1. Background layer: scale source to FILL 9:16, then heavy gaussian blur
+        2. Foreground layer: scale source to FIT inside 9:16 (no crop, full content visible)
+        3. Overlay foreground centered on blurred background
+        4. Apply fade transitions
+
+        Result: all content is visible, empty space filled with blurred video.
         """
-        target_w = self.config.vertical_width
-        target_h = self.config.vertical_height
-        target_ratio = target_w / target_h  # 0.5625 for 9:16
+        tw = self.config.vertical_width   # 1080
+        th = self.config.vertical_height  # 1920
 
-        src_ratio = src_width / src_height
+        # Background: scale to fill 9:16 (will crop to fill, but it's just the blur layer)
+        # Foreground: scale to fit inside 9:16 (no content lost)
+        parts = []
 
-        if src_ratio > target_ratio:
-            # Source is wider — crop sides
-            crop_h = src_height
-            crop_w = int(src_height * target_ratio)
-        else:
-            # Source is taller — crop top/bottom
-            crop_w = src_width
-            crop_h = int(src_width / target_ratio)
+        # [0:v] → split into two streams
+        parts.append(f"[0:v]split=2[bg_in][fg_in]")
 
-        # Center crop
-        x_offset = (src_width - crop_w) // 2
-        y_offset = (src_height - crop_h) // 2
+        # Background: scale to fill + crop to exact 9:16 + blur heavily
+        parts.append(
+            f"[bg_in]scale={tw}:{th}:force_original_aspect_ratio=increase,"
+            f"crop={tw}:{th},"
+            f"gblur=sigma=40,"
+            f"eq=brightness=-0.08"
+            f"[bg]"
+        )
 
-        crop_filter = f"crop={crop_w}:{crop_h}:{x_offset}:{y_offset}"
-        scale_filter = f"scale={target_w}:{target_h}"
+        # Foreground: scale to fit inside 9:16 (maintains aspect ratio, no crop)
+        # force_original_aspect_ratio=decrease ensures it fits within the box
+        # pad ensures even dimensions
+        parts.append(
+            f"[fg_in]scale={tw}:{th}:force_original_aspect_ratio=decrease,"
+            f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=black@0"
+            f"[fg]"
+        )
 
-        return f"{crop_filter},{scale_filter}"
+        # Overlay foreground on blurred background, centered
+        parts.append(
+            f"[bg][fg]overlay=(W-w)/2:(H-h)/2:format=auto"
+        )
+
+        # Add fade if configured
+        fade_dur = self.config.fade_duration
+        if fade_dur > 0 and duration >= fade_dur * 3:
+            fade_out_start = duration - fade_dur
+            parts[-1] += (
+                f",fade=t=in:st=0:d={fade_dur},"
+                f"fade=t=out:st={fade_out_start:.2f}:d={fade_dur}"
+            )
+
+        parts[-1] += "[vout]"
+
+        return ";".join(parts)
 
     def _build_fade_filter(self, duration: float) -> str:
         """Build fade in/out filter."""
@@ -191,26 +220,33 @@ class VideoClipper:
                 "-avoid_negative_ts", "1",
             ]
 
-            # Build video filter chain
-            filters = []
+            use_filter_complex = False
 
-            # 9:16 crop if enabled
+            # 9:16 scale-to-fit with blurred background (no cropping)
             if self.config.crop_vertical:
                 try:
                     src_w, src_h = self._get_video_dimensions(video_path)
-                    crop_filter = self._build_crop_filter(src_w, src_h)
-                    filters.append(crop_filter)
+                    filter_complex = self._build_vertical_filter_complex(
+                        src_w, src_h, duration
+                    )
+                    cmd.extend(["-filter_complex", filter_complex])
+                    cmd.extend(["-map", "[vout]", "-map", "0:a?"])
+                    use_filter_complex = True
+                    logger.info(f"  Using scale-to-fit + blurred background ({src_w}x{src_h} -> 9:16)")
                 except Exception as e:
-                    logger.warning(f"Could not determine video dimensions for crop: {e}")
+                    logger.warning(f"Could not build vertical filter, using simple scale: {e}")
+                    # Fallback: simple scale without crop
+                    cmd.extend(["-vf",
+                        f"scale={self.config.vertical_width}:{self.config.vertical_height}:"
+                        f"force_original_aspect_ratio=decrease,"
+                        f"pad={self.config.vertical_width}:{self.config.vertical_height}:(ow-iw)/2:(oh-ih)/2:black"
+                    ])
 
-            # Fade in/out
-            fade_filter = self._build_fade_filter(duration)
-            if fade_filter:
-                filters.append(fade_filter)
-
-            # Apply filters
-            if filters:
-                cmd.extend(["-vf", ",".join(filters)])
+            # Fade (only if not already applied via filter_complex)
+            if not use_filter_complex:
+                fade_filter = self._build_fade_filter(duration)
+                if fade_filter:
+                    cmd.extend(["-vf", fade_filter])
 
             # Audio fade
             if self.config.fade_duration > 0 and duration >= self.config.fade_duration * 3:
@@ -236,9 +272,9 @@ class VideoClipper:
                 output_path
             ])
 
-            # Execute FFmpeg
+            # Execute FFmpeg (utf-8 encoding to handle non-ASCII filenames)
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120
+                cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=120
             )
 
             if result.returncode != 0:

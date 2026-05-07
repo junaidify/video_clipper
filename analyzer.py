@@ -8,6 +8,7 @@ Scoring dimensions:
 3. Hook keywords — trigger words that signal high-value content
 4. Sentiment intensity — emotionally charged segments
 5. Position bonus — opening hooks and climax positioning
+6. Creator patterns — viral structures from top YouTube channels
 
 Outputs ranked clip candidates with smart boundary detection.
 """
@@ -21,6 +22,7 @@ from typing import Optional
 
 from transcriber import Transcript, TranscriptSegment
 from config import AnalyzerConfig
+from patterns import PatternScorer
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,7 @@ class ContentAnalyzer:
             r'|'.join(re.escape(kw) for kw in self.config.hook_keywords),
             re.IGNORECASE
         )
+        self._pattern_scorer = PatternScorer()
 
     def analyze(self, transcript: Transcript) -> list:
         """
@@ -212,7 +215,7 @@ class ContentAnalyzer:
     def _score_window(self, window: dict, tfidf_scores: dict,
                       total_duration: float) -> tuple:
         """
-        Score a window across all dimensions.
+        Score a window across all dimensions (NLP + creator patterns).
         Returns (total_score, breakdown_dict, primary_reason).
         """
         text = window["text"]
@@ -236,14 +239,27 @@ class ContentAnalyzer:
         mid_time = (window["start"] + window["end"]) / 2
         position_score = self._score_position(mid_time, total_duration)
 
-        # Weighted combination
-        total = (
+        # 6. Creator pattern score (viral structures from top channels)
+        position_ratio = mid_time / total_duration if total_duration > 0 else 0.5
+        is_first = segments[0].id == 0
+        pattern_result = self._pattern_scorer.score_segment(
+            text, position_ratio, is_first_segment=is_first
+        )
+        pattern_score = pattern_result["pattern_total"]
+
+        # Detect clip arc template match (bonus)
+        arc = self._pattern_scorer.detect_clip_arc([s.text for s in segments])
+        arc_bonus = 0.08 if arc else 0.0
+
+        # Weighted combination: NLP (60%) + Creator Patterns (40%)
+        nlp_score = (
             cfg.tfidf_weight * tfidf_score +
             cfg.quote_weight * quote_score +
             cfg.keyword_weight * keyword_score +
             cfg.sentiment_weight * sentiment_score +
             cfg.position_weight * position_score
         )
+        total = (nlp_score * 0.60) + (pattern_score * 0.40) + arc_bonus
 
         breakdown = {
             "tfidf": round(tfidf_score, 4),
@@ -251,6 +267,11 @@ class ContentAnalyzer:
             "keyword": round(keyword_score, 4),
             "sentiment": round(sentiment_score, 4),
             "position": round(position_score, 4),
+            "pattern": round(pattern_score, 4),
+            "arc_match": arc or "none",
+            "hook_opener": pattern_result["hook_opener"],
+            "value_bomb": pattern_result["value_bomb"],
+            "emotional_peak": pattern_result["emotional_peak"],
         }
 
         # Determine primary reason
@@ -260,7 +281,11 @@ class ContentAnalyzer:
             "hook_keywords_detected": keyword_score * cfg.keyword_weight,
             "emotionally_charged": sentiment_score * cfg.sentiment_weight,
             "strategic_position": position_score * cfg.position_weight,
+            "viral_pattern_match": pattern_score * 0.40,
         }
+        if arc:
+            score_map[f"arc_{arc}"] = arc_bonus + 0.1
+
         reason = max(score_map, key=score_map.get)
 
         return total, breakdown, reason

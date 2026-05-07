@@ -53,7 +53,7 @@ class ClipperConfig:
     post_hook_padding: int = 5
     # Output format
     output_format: str = "mp4"
-    # Crop to 9:16 vertical for TikTok/Reels/Shorts
+    # Fit to 9:16 vertical for TikTok/Reels/Shorts (scale + blurred background, no crop)
     crop_vertical: bool = True
     # Video quality (CRF value, lower = better, 18-28 reasonable range)
     video_quality: int = 23
