@@ -1,17 +1,18 @@
 """
 Flask Web Application for Video Auto-Clipper
-Upload a video or paste a YouTube URL → analyze → split into short clips.
+Full panel UI: Library, Smart Clips, Manual Split, Sequential Reels, Training.
 """
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 import uuid
 import threading
 from pathlib import Path
 
-from flask import Flask, render_template, request, jsonify, send_from_directory, url_for
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
@@ -27,18 +28,28 @@ from analyzer import ContentAnalyzer, ClipCandidate
 from clipper import VideoClipper
 from downloader import is_valid_url, download_video, get_video_info
 from llm_analyzer import analyze_with_llm, LLMConfig
+from library import VideoLibrary
+from manual_clipper import TimestampClip, parse_timestamp, split_by_timestamps
+from sequential_clipper import SequentialConfig, split_sequentially
+from trainer import PatternTrainer
 
 # ─── App Setup ───
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max upload
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 app.config['CLIPS_FOLDER'] = os.path.join(os.path.dirname(__file__), 'clips_output')
+app.config['LIBRARY_FOLDER'] = os.path.join(os.path.dirname(__file__), 'video_library')
+app.config['TRAINING_FOLDER'] = os.path.join(os.path.dirname(__file__), 'training_sessions')
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'video-clipper-dev-key')
 
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm', 'flv', 'wmv', 'm4v'}
 
 # In-memory job tracker
 jobs = {}
+
+# Persistent modules
+video_library = VideoLibrary(app.config['LIBRARY_FOLDER'])
+trainer = PatternTrainer(app.config['TRAINING_FOLDER'])
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,42 +63,124 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# ─── Routes ───
+def _get_video_duration(video_path: str) -> float:
+    """Get video duration via ffprobe."""
+    try:
+        cmd = [
+            "ffprobe", "-v", "quiet", "-print_format", "json",
+            "-show_format", video_path
+        ]
+        r = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace')
+        info = json.loads(r.stdout)
+        return float(info["format"]["duration"])
+    except Exception:
+        return 0.0
+
+
+# ═══════════════════════════════════════════════════
+#  PAGE ROUTES
+# ═══════════════════════════════════════════════════
 
 @app.route('/')
 def index():
-    """Main page."""
     return render_template('index.html')
 
 
-@app.route('/api/check-url', methods=['POST'])
-def check_url():
-    """Check if a URL is valid and get video info."""
-    data = request.get_json()
-    url = data.get('url', '').strip()
+# ═══════════════════════════════════════════════════
+#  VIDEO LIBRARY ROUTES
+# ═══════════════════════════════════════════════════
 
-    if not url or not is_valid_url(url):
-        return jsonify({'valid': False, 'error': 'Invalid or unsupported URL'})
-
-    try:
-        info = get_video_info(url)
-        return jsonify({'valid': True, 'info': info})
-    except Exception as e:
-        return jsonify({'valid': False, 'error': str(e)})
+@app.route('/api/library/list')
+def library_list():
+    """List all videos in the library."""
+    videos = video_library.list_videos()
+    return jsonify({
+        'videos': [v.to_dict() for v in videos],
+        'stats': video_library.get_library_stats(),
+    })
 
 
-@app.route('/api/process', methods=['POST'])
-def process_video():
-    """
-    Start video processing job.
-    Accepts either file upload or URL.
-    Returns job_id for progress tracking.
-    """
-    job_id = str(uuid.uuid4())[:8]
-    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
-    os.makedirs(job_dir, exist_ok=True)
+@app.route('/api/library/add', methods=['POST'])
+def library_add():
+    """Add a video to the library from URL or file upload."""
+    # ── URL path ──
+    url = request.form.get('url', '').strip()
+    if url:
+        if not is_valid_url(url):
+            return jsonify({'error': 'Invalid or unsupported URL'}), 400
+        try:
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            dl_result = download_video(url, app.config['UPLOAD_FOLDER'])
+            if not dl_result.success:
+                return jsonify({'error': f'Download failed: {dl_result.error}'}), 400
 
-    # Parse settings from form
+            duration = _get_video_duration(dl_result.file_path)
+            entry = video_library.add_video(
+                source_path=dl_result.file_path,
+                title=dl_result.title or Path(dl_result.file_path).stem,
+                source='url',
+                source_url=url,
+                duration=duration,
+            )
+            return jsonify({'success': True, 'video': entry.to_dict()})
+        except Exception as e:
+            logger.exception("Library add from URL failed")
+            return jsonify({'error': str(e)}), 500
+
+    # ── File upload path ──
+    if 'video' in request.files:
+        file = request.files['video']
+        if file and file.filename and allowed_file(file.filename):
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            filename = secure_filename(file.filename)
+            tmp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"lib_{uuid.uuid4().hex[:8]}_{filename}")
+            file.save(tmp_path)
+
+            duration = _get_video_duration(tmp_path)
+            title = Path(filename).stem
+            entry = video_library.add_video(
+                source_path=tmp_path,
+                title=title,
+                source='upload',
+                duration=duration,
+            )
+            # Clean up temp upload (library made its own copy)
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+            return jsonify({'success': True, 'video': entry.to_dict()})
+
+    return jsonify({'error': 'No valid video file or URL provided'}), 400
+
+
+@app.route('/api/library/delete', methods=['POST'])
+def library_delete():
+    """Delete a video from the library."""
+    data = request.get_json() or {}
+    video_id = data.get('video_id', '')
+    if not video_id:
+        return jsonify({'error': 'Missing video_id'}), 400
+    ok = video_library.delete_video(video_id)
+    return jsonify({'success': ok})
+
+
+# ═══════════════════════════════════════════════════
+#  SMART CLIPS (AI-analyzed hook detection)
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/smart-clip', methods=['POST'])
+def smart_clip():
+    """Start smart clip processing using a library video."""
+    video_id = request.form.get('video_id', '')
+    entry = video_library.get_video(video_id) if video_id else None
+    if not entry:
+        return jsonify({'error': 'Select a video from the library'}), 400
+
+    if not Path(entry.file_path).exists():
+        return jsonify({'error': 'Video file missing from library'}), 400
+
     settings = {
         'model_size': request.form.get('model_size', 'base'),
         'max_clips': int(request.form.get('max_clips', 10)),
@@ -98,58 +191,372 @@ def process_video():
         'use_llm': request.form.get('use_llm', 'false') == 'true',
     }
 
-    video_path = None
-    source_type = None
+    job_id = str(uuid.uuid4())[:8]
+    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
+    os.makedirs(job_dir, exist_ok=True)
 
-    # Check for URL input
-    url = request.form.get('url', '').strip()
-    if url and is_valid_url(url):
-        source_type = 'url'
-        jobs[job_id] = {
-            'status': 'downloading',
-            'progress': 0,
-            'message': 'Downloading video...',
-            'url': url,
-            'clips': [],
-            'error': None,
-        }
-        # Start processing in background thread
-        thread = threading.Thread(
-            target=_process_job,
-            args=(job_id, None, url, source_type, job_dir, settings),
-            daemon=True,
+    jobs[job_id] = {
+        'status': 'transcribing',
+        'progress': 5,
+        'message': 'Starting transcription...',
+        'clips': [],
+        'error': None,
+    }
+
+    thread = threading.Thread(
+        target=_smart_clip_job,
+        args=(job_id, entry.file_path, video_id, job_dir, settings),
+        daemon=True,
+    )
+    thread.start()
+    return jsonify({'job_id': job_id, 'status': 'started'})
+
+
+def _smart_clip_job(job_id, video_path, video_id, output_dir, settings):
+    """Background: transcribe → analyze → split."""
+    try:
+        # Transcribe
+        jobs[job_id]['status'] = 'transcribing'
+        jobs[job_id]['message'] = f'Transcribing (model: {settings["model_size"]})...'
+        jobs[job_id]['progress'] = 20
+
+        transcript = transcribe(
+            video_path=video_path,
+            model_size=settings['model_size'],
         )
-        thread.start()
-        return jsonify({'job_id': job_id, 'status': 'started'})
+        jobs[job_id]['message'] = f'Transcribed: {len(transcript.segments)} segments'
+        jobs[job_id]['progress'] = 50
+        transcript.save(os.path.join(output_dir, 'transcript.json'))
 
-    # Check for file upload
-    if 'video' in request.files:
-        file = request.files['video']
-        if file and file.filename and allowed_file(file.filename):
-            source_type = 'upload'
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            filename = secure_filename(file.filename)
-            video_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{job_id}_{filename}")
-            file.save(video_path)
+        # Analyze
+        jobs[job_id]['status'] = 'analyzing'
+        jobs[job_id]['message'] = 'Analyzing for hooks...'
+        jobs[job_id]['progress'] = 55
 
-            jobs[job_id] = {
-                'status': 'processing',
-                'progress': 0,
-                'message': 'Video uploaded, starting analysis...',
-                'clips': [],
-                'error': None,
-            }
+        analyzer_config = AnalyzerConfig(
+            min_hook_score=settings['min_score'],
+            max_clips=settings['max_clips'],
+        )
+        analyzer = ContentAnalyzer(analyzer_config)
+        candidates = analyzer.analyze(transcript)
 
-            thread = threading.Thread(
-                target=_process_job,
-                args=(job_id, video_path, None, source_type, job_dir, settings),
-                daemon=True,
-            )
-            thread.start()
-            return jsonify({'job_id': job_id, 'status': 'started'})
+        # LLM fallback
+        if settings.get('use_llm') and len(candidates) < 2:
+            jobs[job_id]['message'] = 'Trying LLM analysis...'
+            llm_candidates = analyze_with_llm(transcript)
+            if llm_candidates:
+                for lc in llm_candidates:
+                    candidates.append(ClipCandidate(
+                        start=lc['start'], end=lc['end'],
+                        score=lc['score'], hook_text=lc['hook_text'],
+                        reason=f"llm_{lc['reason']}",
+                    ))
+                candidates.sort(key=lambda c: c.score, reverse=True)
+                candidates = candidates[:settings['max_clips']]
 
-    return jsonify({'error': 'No valid video file or URL provided'}), 400
+        if not candidates:
+            jobs[job_id]['status'] = 'completed'
+            jobs[job_id]['message'] = 'No hooks found. Lower the min score.'
+            jobs[job_id]['progress'] = 100
+            return
 
+        jobs[job_id]['message'] = f'{len(candidates)} candidates found'
+        jobs[job_id]['progress'] = 65
+
+        # Split
+        jobs[job_id]['status'] = 'splitting'
+        jobs[job_id]['message'] = 'Splitting clips...'
+
+        clipper_config = ClipperConfig(
+            min_clip_duration=settings['min_duration'],
+            max_clip_duration=settings['max_duration'],
+            crop_vertical=settings['crop_vertical'],
+        )
+        clipper = VideoClipper(clipper_config)
+        results = clipper.extract_all_clips(
+            video_path=video_path,
+            candidates=candidates,
+            output_dir=output_dir,
+            video_duration=transcript.duration,
+        )
+
+        clips_info = []
+        for r in results:
+            if r.success:
+                fname = Path(r.output_path).name
+                clips_info.append({
+                    'clip_number': r.clip_number,
+                    'filename': fname,
+                    'url': f'/clips/{job_id}/{fname}',
+                    'start': r.start, 'end': r.end,
+                    'duration': r.duration,
+                    'score': r.score,
+                    'reason': r.reason,
+                    'hook_text': r.hook_text[:200],
+                })
+
+        # Record output dir in library
+        video_library.add_clips_directory(video_id, output_dir)
+
+        jobs[job_id]['status'] = 'completed'
+        jobs[job_id]['clips'] = clips_info
+        jobs[job_id]['message'] = f'Done! {len(clips_info)} clips.'
+        jobs[job_id]['progress'] = 100
+
+    except Exception as e:
+        logger.exception(f"Smart clip job {job_id} failed")
+        jobs[job_id]['status'] = 'error'
+        jobs[job_id]['error'] = str(e)
+        jobs[job_id]['message'] = f'Error: {e}'
+
+
+# ═══════════════════════════════════════════════════
+#  MANUAL TIMESTAMP SPLIT
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/manual-split', methods=['POST'])
+def manual_split():
+    """Split video at user-defined timestamps."""
+    video_id = request.form.get('video_id', '')
+    entry = video_library.get_video(video_id) if video_id else None
+    if not entry:
+        return jsonify({'error': 'Select a video from the library'}), 400
+    if not Path(entry.file_path).exists():
+        return jsonify({'error': 'Video file missing'}), 400
+
+    raw_clips = json.loads(request.form.get('clips', '[]'))
+    if not raw_clips:
+        return jsonify({'error': 'No timestamps provided'}), 400
+
+    crop = request.form.get('crop_vertical', 'true') == 'true'
+
+    # Parse timestamps
+    try:
+        clips = []
+        for c in raw_clips:
+            start = parse_timestamp(c['start'])
+            end = parse_timestamp(c['end'])
+            clips.append(TimestampClip(start=start, end=end, label=c.get('label')))
+    except (ValueError, KeyError) as e:
+        return jsonify({'error': f'Invalid timestamp: {e}'}), 400
+
+    job_id = str(uuid.uuid4())[:8]
+    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    results = split_by_timestamps(
+        video_path=entry.file_path,
+        clips=clips,
+        output_dir=job_dir,
+        crop_vertical=crop,
+    )
+
+    # Record in library
+    video_library.add_clips_directory(video_id, job_dir)
+
+    return jsonify({
+        'job_id': job_id,
+        'results': results,
+        'success_count': sum(1 for r in results if r.get('success')),
+    })
+
+
+# ═══════════════════════════════════════════════════
+#  SEQUENTIAL REELS (full video → consecutive shorts)
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/sequential-split', methods=['POST'])
+def sequential_split():
+    """Split entire video into consecutive reels."""
+    video_id = request.form.get('video_id', '')
+    entry = video_library.get_video(video_id) if video_id else None
+    if not entry:
+        return jsonify({'error': 'Select a video from the library'}), 400
+    if not Path(entry.file_path).exists():
+        return jsonify({'error': 'Video file missing'}), 400
+
+    target_dur = int(request.form.get('target_duration', 55))
+    overlap = float(request.form.get('overlap', 1.5))
+    crop = request.form.get('crop_vertical', 'true') == 'true'
+    use_transcript = request.form.get('use_transcript', 'false') == 'true'
+
+    job_id = str(uuid.uuid4())[:8]
+    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    jobs[job_id] = {
+        'status': 'processing',
+        'progress': 10,
+        'message': 'Starting sequential split...',
+        'reels': [],
+        'error': None,
+    }
+
+    thread = threading.Thread(
+        target=_sequential_job,
+        args=(job_id, entry.file_path, video_id, job_dir,
+              target_dur, overlap, crop, use_transcript),
+        daemon=True,
+    )
+    thread.start()
+    return jsonify({'job_id': job_id, 'status': 'started'})
+
+
+def _sequential_job(job_id, video_path, video_id, output_dir,
+                    target_dur, overlap, crop, use_transcript):
+    """Background: sequential split."""
+    try:
+        config = SequentialConfig(
+            target_duration=target_dur,
+            overlap_seconds=overlap,
+            crop_vertical=crop,
+        )
+
+        transcript = None
+        if use_transcript:
+            jobs[job_id]['message'] = 'Transcribing for sentence boundaries...'
+            jobs[job_id]['progress'] = 20
+            transcript = transcribe(video_path=video_path, model_size='base')
+
+        jobs[job_id]['message'] = 'Splitting into reels...'
+        jobs[job_id]['progress'] = 40
+
+        duration = _get_video_duration(video_path)
+        results = split_sequentially(
+            video_path=video_path,
+            output_dir=output_dir,
+            config=config,
+            transcript=transcript,
+            video_duration=duration,
+        )
+
+        success_reels = [r for r in results if r.get('success')]
+        failed_reels = [r for r in results if not r.get('success')]
+        video_library.add_clips_directory(video_id, output_dir)
+
+        jobs[job_id]['status'] = 'completed'
+        jobs[job_id]['reels'] = success_reels
+        jobs[job_id]['progress'] = 100
+
+        if success_reels:
+            jobs[job_id]['message'] = f'Done! {len(success_reels)} reels.'
+        elif failed_reels:
+            first_err = failed_reels[0].get('error', 'Unknown')
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['error'] = f'All {len(failed_reels)} reels failed. First error: {first_err}'
+            jobs[job_id]['message'] = f'FFmpeg failed on all reels'
+        else:
+            jobs[job_id]['message'] = 'No split points computed (video too short?)'
+
+        logger.info(f"Sequential job {job_id}: {len(success_reels)} ok, {len(failed_reels)} failed")
+
+    except Exception as e:
+        logger.exception(f"Sequential job {job_id} failed")
+        jobs[job_id]['status'] = 'error'
+        jobs[job_id]['error'] = str(e)
+        jobs[job_id]['message'] = f'Error: {e}'
+
+
+# ═══════════════════════════════════════════════════
+#  TRAINING (pattern extraction from examples)
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/training/create', methods=['POST'])
+def training_create():
+    """Create a new private training session."""
+    session_id = trainer.create_session()
+    return jsonify({'session_id': session_id})
+
+
+@app.route('/api/training/sessions')
+def training_sessions():
+    """List all training sessions."""
+    return jsonify({'sessions': trainer.list_sessions()})
+
+
+@app.route('/api/training/upload', methods=['POST'])
+def training_upload():
+    """Upload a video to a training session (long or short form)."""
+    session_id = request.form.get('session_id', '')
+    vtype = request.form.get('type', '')  # 'long' or 'short'
+
+    if not session_id:
+        return jsonify({'error': 'No session selected'}), 400
+    if vtype not in ('long', 'short'):
+        return jsonify({'error': 'Type must be "long" or "short"'}), 400
+
+    if 'video' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['video']
+    if not file or not file.filename:
+        return jsonify({'error': 'Empty file'}), 400
+
+    # Save temp file
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    filename = secure_filename(file.filename)
+    tmp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"train_{uuid.uuid4().hex[:8]}_{filename}")
+    file.save(tmp_path)
+
+    try:
+        # Get duration
+        duration = _get_video_duration(tmp_path)
+
+        # Quick transcription for pattern analysis
+        transcript = transcribe(video_path=tmp_path, model_size='tiny')
+
+        transcript_data = {
+            'duration': duration,
+            'segments': [{'start': s.start, 'end': s.end, 'text': s.text}
+                         for s in transcript.segments],
+            'full_text': transcript.full_text if hasattr(transcript, 'full_text')
+                         else ' '.join(s.text for s in transcript.segments),
+        }
+
+        if vtype == 'long':
+            trainer.add_long_form(session_id, transcript_data)
+        else:
+            trainer.add_short_form(session_id, transcript_data)
+
+        return jsonify({'success': True, 'duration': duration})
+
+    except Exception as e:
+        logger.exception("Training upload failed")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+@app.route('/api/training/extract', methods=['POST'])
+def training_extract():
+    """Extract patterns from a training session."""
+    data = request.get_json() or {}
+    session_id = data.get('session_id', '')
+    if not session_id:
+        return jsonify({'error': 'No session_id'}), 400
+
+    try:
+        profile = trainer.extract_patterns(session_id)
+        return jsonify({'success': True, 'profile': profile.to_dict()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/training/delete', methods=['POST'])
+def training_delete():
+    """Delete a training session."""
+    data = request.get_json() or {}
+    session_id = data.get('session_id', '')
+    ok = trainer.delete_session(session_id) if session_id else False
+    return jsonify({'success': ok})
+
+
+# ═══════════════════════════════════════════════════
+#  SHARED ROUTES
+# ═══════════════════════════════════════════════════
 
 @app.route('/api/status/<job_id>')
 def job_status(job_id):
@@ -166,9 +573,23 @@ def serve_clip(job_id, filename):
     return send_from_directory(clip_dir, filename)
 
 
+@app.route('/api/check-url', methods=['POST'])
+def check_url():
+    """Check if a URL is valid and get video info."""
+    data = request.get_json()
+    url = data.get('url', '').strip()
+    if not url or not is_valid_url(url):
+        return jsonify({'valid': False, 'error': 'Invalid or unsupported URL'})
+    try:
+        info = get_video_info(url)
+        return jsonify({'valid': True, 'info': info})
+    except Exception as e:
+        return jsonify({'valid': False, 'error': str(e)})
+
+
 @app.route('/api/settings', methods=['GET'])
 def get_settings():
-    """Return current API key status and system dependency checks."""
+    """Return API key status and dependency checks."""
     import shutil
     config = LLMConfig.from_env()
     return jsonify({
@@ -180,148 +601,53 @@ def get_settings():
     })
 
 
-# ─── Background Processing ───
+# ═══════════════════════════════════════════════════
+#  LEGACY /api/process (kept for backward compat)
+# ═══════════════════════════════════════════════════
 
-def _process_job(job_id: str, video_path: str, url: str,
-                 source_type: str, output_dir: str, settings: dict):
-    """Run the full pipeline in a background thread."""
-    try:
-        # Step 1: Download if URL
-        if source_type == 'url':
-            jobs[job_id]['status'] = 'downloading'
-            jobs[job_id]['message'] = 'Downloading video from URL...'
-            jobs[job_id]['progress'] = 5
+@app.route('/api/process', methods=['POST'])
+def process_video():
+    """Legacy: Start processing from direct upload/URL (not library)."""
+    job_id = str(uuid.uuid4())[:8]
+    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
+    os.makedirs(job_dir, exist_ok=True)
 
-            dl_result = download_video(url, app.config['UPLOAD_FOLDER'])
-            if not dl_result.success:
-                jobs[job_id]['status'] = 'error'
-                jobs[job_id]['error'] = f'Download failed: {dl_result.error}'
-                return
+    settings = {
+        'model_size': request.form.get('model_size', 'base'),
+        'max_clips': int(request.form.get('max_clips', 10)),
+        'min_score': float(request.form.get('min_score', 0.4)),
+        'min_duration': int(request.form.get('min_duration', 15)),
+        'max_duration': int(request.form.get('max_duration', 60)),
+        'crop_vertical': request.form.get('crop_vertical', 'true') == 'true',
+        'use_llm': request.form.get('use_llm', 'false') == 'true',
+    }
 
-            video_path = dl_result.file_path
-            jobs[job_id]['message'] = f'Downloaded: {dl_result.title}'
-            jobs[job_id]['progress'] = 15
-
-        # Step 2: Transcribe
-        jobs[job_id]['status'] = 'transcribing'
-        jobs[job_id]['message'] = f'Transcribing audio (model: {settings["model_size"]})...'
-        jobs[job_id]['progress'] = 20
-
-        transcript = transcribe(
-            video_path=video_path,
-            model_size=settings['model_size'],
-        )
-
-        jobs[job_id]['message'] = f'Transcribed: {len(transcript.segments)} segments'
-        jobs[job_id]['progress'] = 50
-
-        # Save transcript
-        transcript.save(os.path.join(output_dir, 'transcript.json'))
-
-        # Step 3: Analyze
-        jobs[job_id]['status'] = 'analyzing'
-        jobs[job_id]['message'] = 'Analyzing content for hooks...'
-        jobs[job_id]['progress'] = 55
-
-        analyzer_config = AnalyzerConfig(
-            min_hook_score=settings['min_score'],
-            max_clips=settings['max_clips'],
-        )
-        analyzer = ContentAnalyzer(analyzer_config)
-        candidates = analyzer.analyze(transcript)
-
-        # Optional: LLM fallback
-        if settings.get('use_llm') and len(candidates) < 2:
-            jobs[job_id]['message'] = 'NLP found few hooks, trying LLM analysis...'
-            llm_candidates = analyze_with_llm(transcript)
-            if llm_candidates:
-                # Convert LLM results to ClipCandidate objects
-                for lc in llm_candidates:
-                    candidates.append(ClipCandidate(
-                        start=lc['start'],
-                        end=lc['end'],
-                        score=lc['score'],
-                        hook_text=lc['hook_text'],
-                        reason=f"llm_{lc['reason']}",
-                    ))
-                # Re-sort and deduplicate
-                candidates.sort(key=lambda c: c.score, reverse=True)
-                candidates = candidates[:settings['max_clips']]
-
-        if not candidates:
-            jobs[job_id]['status'] = 'completed'
-            jobs[job_id]['message'] = 'No hook-worthy moments found. Try lowering the minimum score.'
-            jobs[job_id]['progress'] = 100
-            return
-
-        jobs[job_id]['message'] = f'Found {len(candidates)} clip candidates'
-        jobs[job_id]['progress'] = 65
-
-        # Step 4: Split video
-        jobs[job_id]['status'] = 'splitting'
-        jobs[job_id]['message'] = 'Splitting video into clips...'
-
-        clipper_config = ClipperConfig(
-            min_clip_duration=settings['min_duration'],
-            max_clip_duration=settings['max_duration'],
-            crop_vertical=settings['crop_vertical'],
-        )
-        clipper = VideoClipper(clipper_config)
-
-        results = clipper.extract_all_clips(
-            video_path=video_path,
-            candidates=candidates,
-            output_dir=output_dir,
-            video_duration=transcript.duration,
-        )
-
-        # Build clip info for frontend
-        clips_info = []
-        for r in results:
-            if r.success:
-                filename = Path(r.output_path).name
-                clips_info.append({
-                    'clip_number': r.clip_number,
-                    'filename': filename,
-                    'url': f'/clips/{job_id}/{filename}',
-                    'start': r.start,
-                    'end': r.end,
-                    'duration': r.duration,
-                    'score': r.score,
-                    'reason': r.reason,
-                    'hook_text': r.hook_text[:200],
-                })
-
-        # Done
-        jobs[job_id]['status'] = 'completed'
-        jobs[job_id]['clips'] = clips_info
-        jobs[job_id]['message'] = f'Done! {len(clips_info)} clips created.'
-        jobs[job_id]['progress'] = 100
-
-        logger.info(f"Job {job_id} completed: {len(clips_info)} clips")
-
-    except Exception as e:
-        logger.exception(f"Job {job_id} failed")
-        jobs[job_id]['status'] = 'error'
-        jobs[job_id]['error'] = str(e)
-        jobs[job_id]['message'] = f'Error: {str(e)}'
+    # Legacy route redirects users to the new library-based flow
+    return jsonify({
+        'error': 'This endpoint is deprecated. Use the Video Library panel to add videos, '
+                 'then use Smart Clips / Manual Split / Sequential Reels.'
+    }), 400
 
 
-# ─── Main ───
+# ═══════════════════════════════════════════════════
+#  MAIN
+# ═══════════════════════════════════════════════════
 
 if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['CLIPS_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['LIBRARY_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['TRAINING_FOLDER'], exist_ok=True)
 
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
 
     print(f"""
-╔══════════════════════════════════════════════════╗
-║           VIDEO AUTO-CLIPPER  (Web UI)           ║
-║   Upload video or paste YouTube URL              ║
-║   http://localhost:{port}                          ║
-╚══════════════════════════════════════════════════╝
++==================================================+
+|          VIDEO AUTO-CLIPPER  (Web UI)             |
+|   Library + Smart + Manual + Sequential + Train   |
+|   http://localhost:{port}                          |
++==================================================+
     """)
 
     app.run(host='0.0.0.0', port=port, debug=debug)

@@ -62,10 +62,16 @@ def get_video_duration(video_path: str) -> float:
         video_path
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        # Use encoding='utf-8' + errors='replace' to handle non-ASCII filenames on Windows
+        result = subprocess.run(
+            cmd, capture_output=True, encoding='utf-8', errors='replace', check=True
+        )
+        if not result.stdout:
+            logger.warning("ffprobe returned empty output")
+            return 0.0
         info = json.loads(result.stdout)
         return float(info["format"]["duration"])
-    except (subprocess.CalledProcessError, KeyError, json.JSONDecodeError) as e:
+    except (subprocess.CalledProcessError, KeyError, json.JSONDecodeError, TypeError) as e:
         logger.warning(f"ffprobe failed, duration unknown: {e}")
         return 0.0
 
@@ -82,7 +88,8 @@ def extract_audio(video_path: str, audio_path: str) -> str:
         "-ac", "1",               # mono
         audio_path
     ]
-    subprocess.run(cmd, capture_output=True, check=True)
+    # Use encoding='utf-8' + errors='replace' to handle non-ASCII paths on Windows
+    subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', check=True)
     logger.info(f"Audio extracted to: {audio_path}")
     return audio_path
 

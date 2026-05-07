@@ -13,8 +13,9 @@ video_clipper/
 ├── transcriber.py      # Whisper-based audio transcription
 ├── analyzer.py         # NLP content analysis (TF-IDF, keywords, sentiment)
 ├── llm_analyzer.py     # Optional LLM fallback (Groq, Gemini, NVIDIA)
-├── clipper.py          # FFmpeg video splitting + 9:16 crop
+├── clipper.py          # FFmpeg video splitting + 9:16 scale-to-fit (blurred bg)
 ├── downloader.py       # YouTube/URL download via yt-dlp
+├── patterns.py         # Creator patterns knowledge base (viral structures)
 ├── .env                # API keys (GROQ, GEMINI, NVIDIA) — NOT committed
 ├── .env.example        # Template for .env
 ├── requirements.txt    # Python dependencies
@@ -58,6 +59,17 @@ python main.py video.mp4 --output ./clips --max-clips 5
 - ~2GB disk for Whisper model (first run downloads it)
 
 ## Changelog
+
+### v2.3 — 2026-05-06
+- Fixed: Unicode crash on Windows when video titles contain non-ASCII characters (Hindi, Arabic, Chinese, etc.)
+- Downloader now uses video ID as filename instead of title (avoids encoding issues entirely)
+- All subprocess calls (ffprobe, ffmpeg) now use `encoding='utf-8', errors='replace'` instead of default cp1252
+- Fixed: `json.loads(None)` crash when ffprobe stdout was empty due to encoding failure
+
+### v2.2 — 2026-05-06
+- **No-crop video fitting**: Replaced center-crop with scale-to-fit + blurred background fill (YouTube Shorts style). No content is lost — video shrinks to fit 9:16, empty space filled with blurred version of the video itself.
+- **Creator patterns intelligence** (`patterns.py`): Baked in viral clipping patterns from top YouTube channels (MrBeast, Hormozi, Huberman, podcast clips, TED, etc.). 6 pattern categories: hook openers, value bombs, emotional peaks, structural signals, clip arc templates, transition markers. Integrated into analyzer scoring at 40% weight alongside NLP.
+- **Clip arc detection**: Identifies which viral template a clip matches (hook→value→CTA, story→climax→lesson, claim→proof→takeaway, etc.) and gives bonus score.
 
 ### v2.1 — 2026-05-06
 - Fixed: YouTube download crash when FFmpeg is not installed

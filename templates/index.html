@@ -4,795 +4,1561 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Auto-Clipper</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0f0f0f;
-            --surface: #1a1a2e;
-            --surface-2: #16213e;
-            --accent: #e94560;
-            --accent-glow: rgba(233, 69, 96, 0.3);
-            --text: #eee;
-            --text-dim: #888;
-            --border: #2a2a4a;
-            --success: #00c853;
-            --warning: #ffd600;
+            /* Liquid Obsidian — Core Void */
+            --void: #07070f;
+            --void-warm: #0b0b18;
+            --void-surface: #0e0e1c;
+
+            /* Glass Hierarchy — layered refractive surfaces */
+            --glass-0: rgba(255,255,255,0.02);
+            --glass-1: rgba(255,255,255,0.04);
+            --glass-2: rgba(255,255,255,0.06);
+            --glass-3: rgba(255,255,255,0.09);
+            --glass-4: rgba(255,255,255,0.12);
+            --glass-border: rgba(255,255,255,0.06);
+            --glass-border-hover: rgba(255,255,255,0.14);
+            --glass-border-active: rgba(255,255,255,0.20);
+            --glass-glow: rgba(255,255,255,0.02);
+
+            /* Thermal Accent — molten coral through rose into magenta */
+            --accent: #ff4d6a;
+            --accent-soft: #ff6b81;
+            --accent-dim: #e8405c;
+            --accent-glow: rgba(255,77,106,0.15);
+            --accent-glow-strong: rgba(255,77,106,0.30);
+            --accent-gradient: linear-gradient(135deg, #ff4d6a 0%, #e91e63 50%, #c2185b 100%);
+            --accent-gradient-soft: linear-gradient(135deg, rgba(255,77,106,0.15), rgba(233,30,99,0.08));
+
+            /* Spectral Support */
+            --blue: #60a5fa;
+            --blue-glass: rgba(96,165,250,0.10);
+            --green: #34d399;
+            --green-glass: rgba(52,211,153,0.10);
+            --yellow: #fbbf24;
+            --yellow-glass: rgba(251,191,36,0.10);
+            --purple: #a78bfa;
+            --purple-glass: rgba(167,139,250,0.10);
+
+            /* Typography — thin, luminous, precise */
+            --text: rgba(255,255,255,0.88);
+            --text-secondary: rgba(255,255,255,0.48);
+            --text-tertiary: rgba(255,255,255,0.26);
+            --text-ghost: rgba(255,255,255,0.14);
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Inter', -apple-system, system-ui, sans-serif;
+
+            /* Spatial Architecture */
+            --radius-xl: 20px;
+            --radius: 14px;
+            --radius-sm: 10px;
+            --radius-xs: 6px;
+            --blur: 20px;
+            --blur-heavy: 40px;
+            --blur-ultra: 60px;
+
+            /* Motion — liquid settling */
+            --ease: cubic-bezier(0.4, 0, 0.2, 1);
+            --ease-out: cubic-bezier(0, 0, 0.2, 1);
+            --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
 
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: var(--bg);
+            font-family: var(--sans);
+            background: var(--void);
             color: var(--text);
             min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
-        /* ─── Header ─── */
+        /* ═══ Atmospheric Void ═══ */
+        .atmosphere {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .atmosphere::before {
+            content: '';
+            position: absolute;
+            width: 800px; height: 800px;
+            top: -200px; left: -100px;
+            background: radial-gradient(circle, rgba(255,77,106,0.06) 0%, transparent 70%);
+            animation: drift1 25s ease-in-out infinite;
+        }
+        .atmosphere::after {
+            content: '';
+            position: absolute;
+            width: 600px; height: 600px;
+            bottom: -100px; right: -100px;
+            background: radial-gradient(circle, rgba(96,165,250,0.04) 0%, transparent 70%);
+            animation: drift2 30s ease-in-out infinite;
+        }
+        .atmo-purple {
+            position: absolute;
+            width: 500px; height: 500px;
+            top: 40%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(167,139,250,0.03) 0%, transparent 70%);
+            animation: drift3 20s ease-in-out infinite;
+        }
+        @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(60px, 40px); } }
+        @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-40px, -30px); } }
+        @keyframes drift3 { 0%,100% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-45%,-55%) scale(1.1); } }
+
+        /* ═══ Noise Texture Overlay ═══ */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            opacity: 0.015;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 256px;
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* ═══ Header — frosted membrane ═══ */
         .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
             text-align: center;
-            padding: 40px 20px 20px;
-            border-bottom: 1px solid var(--border);
+            padding: 20px 24px 16px;
+            background: rgba(7,7,15,0.70);
+            backdrop-filter: blur(var(--blur-ultra));
+            -webkit-backdrop-filter: blur(var(--blur-ultra));
+            border-bottom: 1px solid var(--glass-border);
+            box-shadow: 0 1px 0 rgba(255,255,255,0.03), 0 20px 40px rgba(0,0,0,0.3);
+        }
+        .header-inner {
+            max-width: 1440px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+        }
+        .header-logo {
+            width: 32px; height: 32px;
+            background: var(--accent-gradient);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 16px var(--accent-glow);
+            flex-shrink: 0;
         }
         .header h1 {
-            font-size: 2rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--accent), #ff6b6b, #ffd93d);
+            font-size: 1.15rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text);
+        }
+        .header h1 span {
+            background: var(--accent-gradient);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        .header p {
-            color: var(--text-dim);
-            margin-top: 8px;
-            font-size: 0.95rem;
-        }
-
-        /* ─── Container ─── */
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 30px 20px;
-        }
-
-        /* ─── Tabs ─── */
-        .tabs {
-            display: flex;
-            gap: 0;
-            margin-bottom: 24px;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-        .tab {
-            flex: 1;
-            padding: 14px;
-            text-align: center;
-            cursor: pointer;
-            background: var(--surface);
-            font-size: 0.95rem;
-            font-weight: 600;
-            transition: all 0.2s;
-            border: none;
-            color: var(--text-dim);
-        }
-        .tab:hover { background: var(--surface-2); }
-        .tab.active {
-            background: var(--accent);
-            color: white;
+        .header-tag {
+            font-size: 0.6rem;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            padding: 3px 8px;
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            background: var(--glass-1);
         }
 
-        /* ─── Input Panels ─── */
-        .input-panel {
-            display: none;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 24px;
-        }
-        .input-panel.active { display: block; }
-
-        /* URL Input */
-        .url-input-group {
-            display: flex;
-            gap: 12px;
-        }
-        .url-input-group input {
-            flex: 1;
-            padding: 14px 18px;
-            border-radius: 10px;
-            border: 2px solid var(--border);
-            background: var(--bg);
-            color: var(--text);
-            font-size: 1rem;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        .url-input-group input:focus {
-            border-color: var(--accent);
-        }
-        .url-input-group input::placeholder {
-            color: var(--text-dim);
-        }
-
-        /* File Upload Zone */
-        .upload-zone {
-            border: 2px dashed var(--border);
-            border-radius: 12px;
-            padding: 50px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
+        /* ═══ App Layout ═══ */
+        .app {
             position: relative;
+            z-index: 1;
+            display: flex;
+            max-width: 1440px;
+            margin: 0 auto;
+            min-height: calc(100vh - 60px);
         }
-        .upload-zone:hover, .upload-zone.dragover {
-            border-color: var(--accent);
-            background: rgba(233, 69, 96, 0.05);
+
+        /* ═══ Sidebar — deep glass membrane ═══ */
+        .sidebar {
+            width: 220px;
+            border-right: 1px solid var(--glass-border);
+            padding: 16px 0;
+            flex-shrink: 0;
+            background: rgba(7,7,15,0.50);
+            backdrop-filter: blur(var(--blur-heavy));
+            -webkit-backdrop-filter: blur(var(--blur-heavy));
+            position: sticky;
+            top: 60px;
+            height: calc(100vh - 60px);
+            overflow-y: auto;
+            box-shadow: 1px 0 0 rgba(255,255,255,0.02);
         }
-        .upload-zone .icon { font-size: 3rem; margin-bottom: 12px; }
-        .upload-zone p { color: var(--text-dim); }
-        .upload-zone .filename {
-            color: var(--accent);
-            font-weight: 600;
-            margin-top: 10px;
+
+        .nav-section {
+            padding: 14px 20px 6px;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            color: var(--text-ghost);
+            letter-spacing: 0.14em;
+            font-weight: 500;
+            margin-top: 6px;
         }
-        .upload-zone input[type="file"] {
+        .nav-section:first-child { margin-top: 0; }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 20px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            font-weight: 400;
+            transition: all 0.3s var(--ease);
+            border-left: 2px solid transparent;
+            position: relative;
+            letter-spacing: 0.01em;
+        }
+        .nav-item::before {
+            content: '';
             position: absolute;
             inset: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-
-        /* ─── Settings ─── */
-        .settings-toggle {
-            background: none;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            padding: 10px 18px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            margin-bottom: 16px;
-            transition: all 0.2s;
-        }
-        .settings-toggle:hover {
-            border-color: var(--accent);
-            color: var(--text);
-        }
-        .settings-panel {
-            display: none;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 24px;
-        }
-        .settings-panel.open { display: block; }
-        .settings-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-        }
-        .setting-item label {
-            display: block;
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            margin-bottom: 6px;
-        }
-        .setting-item select,
-        .setting-item input {
-            width: 100%;
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-            color: var(--text);
-            font-size: 0.9rem;
-        }
-        .setting-item .checkbox-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding-top: 8px;
-        }
-        .setting-item .checkbox-row input[type="checkbox"] {
-            width: auto;
-            accent-color: var(--accent);
-        }
-        .llm-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-        .llm-badge.configured { background: rgba(0,200,83,0.2); color: var(--success); }
-        .llm-badge.missing { background: rgba(255,214,0,0.2); color: var(--warning); }
-
-        /* ─── Process Button ─── */
-        .btn-process {
-            width: 100%;
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--accent), #c0392b);
-            color: white;
-            font-size: 1.1rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 20px var(--accent-glow);
-        }
-        .btn-process:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 30px var(--accent-glow);
-        }
-        .btn-process:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* ─── Progress ─── */
-        .progress-section {
-            display: none;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            margin-top: 24px;
-        }
-        .progress-section.active { display: block; }
-        .progress-bar-container {
-            height: 8px;
-            background: var(--bg);
-            border-radius: 4px;
-            overflow: hidden;
-            margin: 16px 0;
-        }
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, var(--accent), #ff6b6b);
-            border-radius: 4px;
-            transition: width 0.5s ease;
-            width: 0%;
-        }
-        .progress-status {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .progress-message { color: var(--text-dim); font-size: 0.9rem; }
-        .progress-percent { color: var(--accent); font-weight: 700; }
-
-        .steps {
-            display: flex;
-            gap: 8px;
-            margin-top: 16px;
-        }
-        .step {
-            flex: 1;
-            padding: 10px;
-            text-align: center;
-            border-radius: 8px;
-            font-size: 0.8rem;
-            background: var(--bg);
-            color: var(--text-dim);
-            border: 1px solid var(--border);
-        }
-        .step.active { border-color: var(--accent); color: var(--accent); }
-        .step.done { border-color: var(--success); color: var(--success); background: rgba(0,200,83,0.05); }
-
-        /* ─── Results ─── */
-        .results-section {
-            display: none;
-            margin-top: 24px;
-        }
-        .results-section.active { display: block; }
-        .results-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-        .results-header h2 { font-size: 1.3rem; }
-        .clip-count {
-            background: var(--accent);
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 700;
-        }
-
-        .clips-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 16px;
-        }
-        .clip-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-            transition: border-color 0.2s;
-        }
-        .clip-card:hover { border-color: var(--accent); }
-        .clip-video {
-            width: 100%;
-            max-height: 400px;
-            background: #000;
-        }
-        .clip-info {
-            padding: 16px;
-        }
-        .clip-info .clip-meta {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
-        }
-        .clip-tag {
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-        .clip-tag.score { background: rgba(233,69,96,0.2); color: var(--accent); }
-        .clip-tag.time { background: rgba(100,100,200,0.2); color: #aab; }
-        .clip-tag.reason { background: rgba(0,200,83,0.15); color: var(--success); }
-        .clip-hook-text {
-            color: var(--text-dim);
-            font-size: 0.85rem;
-            line-height: 1.5;
-            margin-top: 8px;
-            font-style: italic;
-        }
-        .clip-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-        .btn-download {
-            padding: 8px 16px;
-            border-radius: 8px;
-            border: 1px solid var(--accent);
             background: transparent;
-            color: var(--accent);
-            cursor: pointer;
-            font-size: 0.85rem;
+            transition: background 0.3s var(--ease);
+            border-radius: 0 8px 8px 0;
+            pointer-events: none;
+        }
+        .nav-item:hover {
+            color: var(--text);
+        }
+        .nav-item:hover::before {
+            background: var(--glass-2);
+        }
+        .nav-item.active {
+            color: var(--accent-soft);
+            border-left-color: var(--accent);
+            font-weight: 500;
+        }
+        .nav-item.active::before {
+            background: rgba(255,77,106,0.05);
+        }
+        .nav-item .icon {
+            font-size: 0.95rem;
+            width: 20px;
+            text-align: center;
+            opacity: 0.7;
+            transition: opacity 0.3s var(--ease);
+        }
+        .nav-item:hover .icon, .nav-item.active .icon { opacity: 1; }
+
+        /* ═══ Main Content ═══ */
+        .main-content {
+            flex: 1;
+            padding: 28px 36px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* ═══ Panel Transitions ═══ */
+        .panel { display: none; }
+        .panel.active {
+            display: block;
+            animation: panelIn 0.4s var(--ease-out);
+        }
+        @keyframes panelIn {
+            from { opacity: 0; transform: translateY(12px); filter: blur(4px); }
+            to { opacity: 1; transform: translateY(0); filter: blur(0); }
+        }
+
+        .panel-title {
+            font-size: 1.2rem;
             font-weight: 600;
-            transition: all 0.2s;
-            text-decoration: none;
+            letter-spacing: -0.02em;
+            margin-bottom: 4px;
         }
-        .btn-download:hover {
-            background: var(--accent);
-            color: white;
-        }
-
-        /* ─── Error ─── */
-        .error-message {
-            background: rgba(233,69,96,0.1);
-            border: 1px solid var(--accent);
-            color: var(--accent);
-            padding: 16px;
-            border-radius: 10px;
-            margin-top: 16px;
-            display: none;
-        }
-        .error-message.active { display: block; }
-
-        /* ─── Warning Banner ─── */
-        .warning-banner {
-            background: rgba(255, 214, 0, 0.1);
-            border: 1px solid var(--warning);
-            color: var(--warning);
-            padding: 14px 18px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            font-size: 0.9rem;
-            display: none;
+        .panel-desc {
+            color: var(--text-tertiary);
+            font-size: 0.8rem;
+            margin-bottom: 28px;
             line-height: 1.6;
+            font-weight: 300;
+        }
+
+        /* ═══ Glass Card — the core membrane ═══ */
+        .card {
+            background: var(--glass-1);
+            backdrop-filter: blur(var(--blur));
+            -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 22px;
+            margin-bottom: 16px;
+            transition: border-color 0.4s var(--ease), box-shadow 0.4s var(--ease), background 0.4s var(--ease);
+            position: relative;
+            overflow: hidden;
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+            pointer-events: none;
+        }
+        .card:hover {
+            border-color: var(--glass-border-hover);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.25), 0 0 1px rgba(255,255,255,0.06);
+            background: var(--glass-2);
+        }
+        .card-header {
+            font-size: 0.84rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            letter-spacing: -0.01em;
+            color: var(--text);
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+            gap: 14px;
+        }
+
+        /* ═══ Warning Banner ═══ */
+        .warning-banner {
+            background: rgba(251,191,36,0.04);
+            border: 1px solid rgba(251,191,36,0.15);
+            color: var(--yellow);
+            padding: 12px 18px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 20px;
+            font-size: 0.8rem;
+            display: none;
+            backdrop-filter: blur(16px);
+            font-weight: 400;
         }
         .warning-banner.active { display: block; }
         .warning-banner code {
-            background: rgba(255,214,0,0.15);
-            padding: 2px 6px;
+            background: rgba(251,191,36,0.10);
+            padding: 2px 7px;
             border-radius: 4px;
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            font-weight: 400;
+        }
+
+        /* ═══ Form Elements — glass input fields ═══ */
+        .form-row { display: flex; gap: 14px; margin-bottom: 14px; align-items: end; }
+        .form-group { flex: 1; }
+        .form-group label {
+            display: block;
+            font-size: 0.65rem;
+            color: var(--text-tertiary);
+            margin-bottom: 6px;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: var(--radius-xs);
+            border: 1px solid var(--glass-border);
+            background: rgba(255,255,255,0.02);
+            color: var(--text);
             font-size: 0.85rem;
+            font-family: var(--sans);
+            outline: none;
+            transition: all 0.3s var(--ease);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .form-group input:hover,
+        .form-group select:hover {
+            border-color: rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.03);
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            border-color: rgba(255,77,106,0.35);
+            box-shadow: 0 0 0 3px rgba(255,77,106,0.06), 0 0 20px rgba(255,77,106,0.04);
+            background: rgba(255,255,255,0.04);
+        }
+        .form-group input::placeholder {
+            color: var(--text-ghost);
+            font-weight: 300;
+        }
+        .form-group select option {
+            background: #12121f;
+            color: var(--text);
         }
 
-        /* ─── API Keys Section ─── */
-        .api-status {
+        .checkbox-row {
             display: flex;
+            align-items: center;
             gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 8px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+        .checkbox-row input[type="checkbox"] {
+            accent-color: var(--accent);
+            width: 15px;
+            height: 15px;
+            cursor: pointer;
         }
 
-        @media (max-width: 600px) {
+        /* ═══ Buttons — thermal gradient with depth ═══ */
+        .btn {
+            padding: 10px 22px;
+            border: none;
+            border-radius: var(--radius-xs);
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            font-family: var(--sans);
+            transition: all 0.3s var(--ease);
+            letter-spacing: 0.02em;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-primary {
+            background: var(--accent-gradient);
+            color: white;
+            box-shadow: 0 4px 20px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.15);
+        }
+        .btn-primary::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 30px var(--accent-glow-strong), inset 0 1px 0 rgba(255,255,255,0.2);
+            filter: brightness(1.08);
+        }
+        .btn-primary:active {
+            transform: translateY(0);
+            filter: brightness(0.95);
+        }
+        .btn-primary:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+            filter: none;
+        }
+        .btn-secondary {
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            color: var(--text-secondary);
+            backdrop-filter: blur(8px);
+        }
+        .btn-secondary:hover {
+            border-color: var(--glass-border-hover);
+            color: var(--text);
+            background: var(--glass-3);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .btn-sm { padding: 7px 16px; font-size: 0.78rem; }
+        .btn-full { width: 100%; padding: 12px 22px; }
+
+        .url-group { display: flex; gap: 10px; }
+        .url-group input { flex: 1; }
+
+        /* ═══ Upload Zone — dashed glass membrane ═══ */
+        .upload-zone {
+            border: 1px dashed rgba(255,255,255,0.10);
+            border-radius: var(--radius);
+            padding: 36px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.4s var(--ease);
+            position: relative;
+            background: var(--glass-0);
+        }
+        .upload-zone::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: var(--radius);
+            background: var(--accent-gradient-soft);
+            opacity: 0;
+            transition: opacity 0.4s var(--ease);
+            pointer-events: none;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: rgba(255,77,106,0.30);
+            background: rgba(255,77,106,0.02);
+        }
+        .upload-zone:hover::before, .upload-zone.dragover::before {
+            opacity: 1;
+        }
+        .upload-zone .icon { font-size: 1.6rem; margin-bottom: 8px; opacity: 0.5; }
+        .upload-zone p { color: var(--text-tertiary); font-size: 0.78rem; font-weight: 300; position: relative; }
+        .upload-zone .filename { color: var(--accent-soft); font-weight: 600; margin-top: 8px; font-size: 0.82rem; position: relative; }
+        .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+        /* ═══ Tags — spectral pills ═══ */
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.68rem;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+        .tag-red { background: rgba(255,77,106,0.10); color: var(--accent-soft); }
+        .tag-blue { background: var(--blue-glass); color: var(--blue); }
+        .tag-green { background: var(--green-glass); color: var(--green); }
+        .tag-yellow { background: var(--yellow-glass); color: var(--yellow); }
+        .tag-purple { background: var(--purple-glass); color: var(--purple); }
+
+        /* ═══ Progress — thermal bar ═══ */
+        .progress-container { margin: 16px 0; }
+        .progress-bar-bg {
+            height: 3px;
+            background: var(--glass-2);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-gradient);
+            border-radius: 2px;
+            transition: width 0.6s var(--ease);
+            width: 0%;
+            box-shadow: 0 0 16px var(--accent-glow);
+            position: relative;
+        }
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            right: 0; top: -2px; bottom: -2px; width: 20px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+            border-radius: 0 2px 2px 0;
+            animation: shimmer 1.5s ease-in-out infinite;
+        }
+        @keyframes shimmer { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+        .progress-info { display: flex; justify-content: space-between; margin-top: 8px; font-size: 0.75rem; }
+        .progress-info .msg { color: var(--text-tertiary); font-weight: 300; }
+        .progress-info .pct { color: var(--accent-soft); font-weight: 600; font-family: var(--mono); font-size: 0.72rem; }
+
+        .steps-row { display: flex; gap: 6px; margin-top: 14px; }
+        .step {
+            flex: 1;
+            padding: 8px;
+            text-align: center;
+            border-radius: var(--radius-xs);
+            font-size: 0.68rem;
+            font-weight: 500;
+            background: var(--glass-0);
+            color: var(--text-ghost);
+            border: 1px solid var(--glass-border);
+            transition: all 0.4s var(--ease);
+            letter-spacing: 0.02em;
+        }
+        .step.active {
+            border-color: rgba(255,77,106,0.25);
+            color: var(--accent-soft);
+            background: rgba(255,77,106,0.04);
+            box-shadow: 0 0 16px rgba(255,77,106,0.06);
+        }
+        .step.done {
+            border-color: rgba(52,211,153,0.25);
+            color: var(--green);
+            background: rgba(52,211,153,0.04);
+        }
+
+        /* ═══ Video Library Cards — floating glass ═══ */
+        .lib-card {
+            background: var(--glass-1);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.35s var(--ease);
+            position: relative;
+            overflow: hidden;
+        }
+        .lib-card::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+        }
+        .lib-card:hover {
+            border-color: var(--glass-border-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 1px rgba(255,255,255,0.06);
+            background: var(--glass-2);
+        }
+        .lib-card.selected {
+            border-color: rgba(255,77,106,0.35);
+            box-shadow: 0 0 30px var(--accent-glow), 0 12px 40px rgba(0,0,0,0.3);
+            background: rgba(255,77,106,0.03);
+        }
+        .lib-card .lib-title {
+            font-weight: 500;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: -0.01em;
+        }
+        .lib-card .lib-meta { display: flex; gap: 5px; flex-wrap: wrap; }
+
+        /* ═══ Clip Result Cards — glass viewport ═══ */
+        .clip-card {
+            background: var(--glass-1);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: all 0.35s var(--ease);
+        }
+        .clip-card:hover {
+            border-color: var(--glass-border-hover);
+            box-shadow: 0 16px 50px rgba(0,0,0,0.35);
+            transform: translateY(-2px);
+        }
+        .clip-video {
+            width: 100%;
+            max-height: 350px;
+            background: #000;
+            display: block;
+        }
+        .clip-info { padding: 16px; }
+        .clip-meta { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+        .clip-text {
+            color: var(--text-tertiary);
+            font-size: 0.76rem;
+            font-style: italic;
+            line-height: 1.6;
+            font-weight: 300;
+        }
+        .clip-actions { display: flex; gap: 8px; margin-top: 12px; }
+        .btn-download {
+            padding: 6px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,77,106,0.25);
+            background: transparent;
+            color: var(--accent-soft);
+            cursor: pointer;
+            font-size: 0.76rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s var(--ease);
+            font-family: var(--sans);
+            letter-spacing: 0.02em;
+        }
+        .btn-download:hover {
+            background: rgba(255,77,106,0.10);
+            border-color: var(--accent);
+            box-shadow: 0 0 20px rgba(255,77,106,0.10);
+        }
+
+        /* ═══ Timestamp Rows ═══ */
+        .ts-list { display: flex; flex-direction: column; gap: 10px; }
+        .ts-row { display: flex; gap: 10px; align-items: center; }
+        .ts-row input { width: 120px; }
+        .ts-row .ts-label { flex: 1; }
+        .ts-remove {
+            background: none;
+            border: none;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.95rem;
+            padding: 6px 8px;
+            border-radius: var(--radius-xs);
+            transition: all 0.2s var(--ease);
+            opacity: 0.6;
+        }
+        .ts-remove:hover { background: rgba(255,77,106,0.08); opacity: 1; }
+
+        /* ═══ Training ═══ */
+        .training-upload { display: flex; gap: 16px; margin-bottom: 18px; }
+        .training-upload > div { flex: 1; }
+        .training-list { max-height: 200px; overflow-y: auto; margin-top: 10px; }
+        .training-item {
+            padding: 8px 12px;
+            background: var(--glass-0);
+            border-radius: var(--radius-xs);
+            margin-bottom: 5px;
+            font-size: 0.76rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--glass-border);
+        }
+
+        /* ═══ Settings Grid ═══ */
+        .settings-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+        .api-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.68rem;
+            font-weight: 500;
+            font-family: var(--mono);
+            letter-spacing: 0.02em;
+        }
+        .badge-ok {
+            background: rgba(52,211,153,0.08);
+            color: var(--green);
+            border: 1px solid rgba(52,211,153,0.18);
+        }
+        .badge-warn {
+            background: rgba(251,191,36,0.08);
+            color: var(--yellow);
+            border: 1px solid rgba(251,191,36,0.18);
+        }
+
+        /* ═══ Tab Toggle — glass pill selector ═══ */
+        .tab-toggle {
+            display: inline-flex;
+            gap: 2px;
+            background: var(--glass-0);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-xs);
+            padding: 3px;
+            margin-bottom: 16px;
+        }
+        .tab-toggle .tab-btn {
+            padding: 6px 16px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: var(--text-tertiary);
+            font-family: var(--sans);
+            transition: all 0.3s var(--ease);
+            letter-spacing: 0.01em;
+        }
+        .tab-toggle .tab-btn:hover { color: var(--text-secondary); }
+        .tab-toggle .tab-btn.active {
+            background: rgba(255,77,106,0.10);
+            color: var(--accent-soft);
+            box-shadow: 0 2px 8px rgba(255,77,106,0.06);
+        }
+
+        /* ═══ Error Box ═══ */
+        .error-box {
+            background: rgba(255,77,106,0.04);
+            border: 1px solid rgba(255,77,106,0.18);
+            color: var(--accent-soft);
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            margin-top: 14px;
+            display: none;
+            font-size: 0.8rem;
+            backdrop-filter: blur(8px);
+            font-weight: 400;
+        }
+        .error-box.active { display: block; }
+
+        /* ═══ Empty State ═══ */
+        .empty-state { text-align: center; padding: 52px; color: var(--text-ghost); }
+        .empty-state .icon { font-size: 1.8rem; margin-bottom: 10px; opacity: 0.3; }
+        .empty-state p { font-size: 0.82rem; font-weight: 300; }
+
+        /* ═══ Output Cards ═══ */
+        .output-card {
+            background: var(--glass-1);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            margin-bottom: 10px;
+            transition: all 0.3s var(--ease);
+        }
+        .output-card:hover {
+            border-color: var(--glass-border-hover);
+            background: var(--glass-2);
+        }
+        .output-card .dir-name { font-weight: 500; font-size: 0.85rem; margin-bottom: 4px; }
+        .output-card .dir-meta { color: var(--text-tertiary); font-size: 0.76rem; font-weight: 300; }
+
+        /* ═══ Video Select (shared) ═══ */
+        .video-select {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: var(--radius-xs);
+            border: 1px solid var(--glass-border);
+            background: rgba(255,255,255,0.02);
+            color: var(--text);
+            font-size: 0.85rem;
+            font-family: var(--sans);
+            outline: none;
+            transition: all 0.3s var(--ease);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .video-select:hover { border-color: rgba(255,255,255,0.12); }
+        .video-select:focus {
+            border-color: rgba(255,77,106,0.35);
+            box-shadow: 0 0 0 3px rgba(255,77,106,0.06);
+        }
+        .video-select option { background: #12121f; }
+
+        /* ═══ Settings API Key Cards ═══ */
+        .api-key-card {
+            padding: 14px;
+            background: var(--glass-1);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            transition: all 0.3s var(--ease);
+        }
+        .api-key-card:hover {
+            border-color: var(--glass-border-hover);
+            background: var(--glass-2);
+        }
+        .api-key-card .api-provider { margin-bottom: 6px; }
+        .api-key-card .api-url {
+            color: var(--text-ghost);
+            font-size: 0.68rem;
+            font-family: var(--mono);
+            margin-top: 2px;
+        }
+
+        /* ═══ Scrollbar — minimal ═══ */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.06);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.12);
+        }
+
+        /* ═══ Selection highlight ═══ */
+        ::selection {
+            background: rgba(255,77,106,0.25);
+            color: white;
+        }
+
+        /* ═══ Responsive ═══ */
+        @media (max-width: 768px) {
+            .app { flex-direction: column; }
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+                border-bottom: 1px solid var(--glass-border);
+                display: flex;
+                overflow-x: auto;
+                padding: 0;
+                gap: 0;
+            }
+            .nav-item {
+                white-space: nowrap;
+                border-left: none;
+                border-bottom: 2px solid transparent;
+                padding: 10px 16px;
+                font-size: 0.78rem;
+            }
+            .nav-item::before { display: none; }
+            .nav-item.active { border-bottom-color: var(--accent); border-left-color: transparent; }
+            .nav-section { display: none; }
+            .main-content { padding: 20px 16px; }
             .settings-grid { grid-template-columns: 1fr; }
-            .url-input-group { flex-direction: column; }
-            .header h1 { font-size: 1.5rem; }
+            .form-row { flex-direction: column; }
+            .training-upload { flex-direction: column; }
+            .header-tag { display: none; }
         }
     </style>
 </head>
 <body>
 
-<div class="header">
-    <h1>Video Auto-Clipper</h1>
-    <p>Upload a video or paste a YouTube link — AI finds the hooks and splits it into short clips</p>
+<div class="atmosphere">
+    <div class="atmo-purple"></div>
 </div>
 
-<div class="container">
-
-    <!-- FFmpeg Warning -->
-    <div class="warning-banner" id="ffmpeg-warning">
-        <strong>FFmpeg not found.</strong> Download will work but at lower quality.
-        Clip splitting will NOT work without FFmpeg.<br>
-        Install it: <code>winget install ffmpeg</code> then restart the app.
+<div class="header">
+    <div class="header-inner">
+        <div class="header-logo">&#9889;</div>
+        <h1>Video <span>Auto-Clipper</span></h1>
+        <div class="header-tag">v2.0</div>
     </div>
+</div>
 
-    <!-- Tabs -->
-    <div class="tabs">
-        <button class="tab active" data-tab="url" onclick="switchTab('url')">
-            Paste YouTube Link
-        </button>
-        <button class="tab" data-tab="upload" onclick="switchTab('upload')">
-            Upload Video
-        </button>
-    </div>
-
-    <!-- URL Input -->
-    <div class="input-panel active" id="panel-url">
-        <div class="url-input-group">
-            <input type="text" id="video-url" placeholder="https://www.youtube.com/watch?v=..."
-                   autocomplete="off" spellcheck="false">
+<div class="app">
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <div class="nav-section">Source</div>
+        <div class="nav-item active" data-panel="library" onclick="switchPanel('library')">
+            <span class="icon">&#128218;</span> Video Library
         </div>
-        <p style="color: var(--text-dim); font-size: 0.8rem; margin-top: 10px;">
-            Supports: YouTube, YouTube Shorts, TikTok, Instagram Reels, X/Twitter
-        </p>
-    </div>
-
-    <!-- Upload Input -->
-    <div class="input-panel" id="panel-upload">
-        <div class="upload-zone" id="upload-zone">
-            <div class="icon">&#128253;</div>
-            <p>Drag & drop your video here, or click to browse</p>
-            <p style="font-size: 0.8rem; margin-top: 8px;">MP4, AVI, MOV, MKV, WebM — up to 2GB</p>
-            <div class="filename" id="file-name"></div>
-            <input type="file" id="video-file" accept=".mp4,.avi,.mov,.mkv,.webm,.flv,.wmv,.m4v">
+        <div class="nav-section">Clip Modes</div>
+        <div class="nav-item" data-panel="smart" onclick="switchPanel('smart')">
+            <span class="icon">&#9889;</span> Smart Clips
+        </div>
+        <div class="nav-item" data-panel="manual" onclick="switchPanel('manual')">
+            <span class="icon">&#9986;</span> Manual Split
+        </div>
+        <div class="nav-item" data-panel="sequential" onclick="switchPanel('sequential')">
+            <span class="icon">&#127916;</span> Sequential Reels
+        </div>
+        <div class="nav-section">Tools</div>
+        <div class="nav-item" data-panel="training" onclick="switchPanel('training')">
+            <span class="icon">&#129504;</span> Training
+        </div>
+        <div class="nav-item" data-panel="output" onclick="switchPanel('output')">
+            <span class="icon">&#128194;</span> Output Browser
+        </div>
+        <div class="nav-item" data-panel="settings" onclick="switchPanel('settings')">
+            <span class="icon">&#9881;</span> Settings
         </div>
     </div>
 
-    <!-- Settings -->
-    <button class="settings-toggle" onclick="toggleSettings()">
-        Settings &amp; API Keys
-    </button>
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="warning-banner" id="ffmpeg-warning">
+            <strong>FFmpeg not found.</strong> Video splitting requires FFmpeg.
+            Install: <code>winget install ffmpeg</code> then restart.
+        </div>
 
-    <div class="settings-panel" id="settings-panel">
-        <div class="settings-grid">
-            <div class="setting-item">
-                <label>Whisper Model</label>
-                <select id="model-size">
-                    <option value="tiny">Tiny (fastest, least accurate)</option>
-                    <option value="base" selected>Base (balanced)</option>
-                    <option value="small">Small (better accuracy)</option>
-                    <option value="medium">Medium (high accuracy)</option>
-                    <option value="large">Large (best, slowest)</option>
-                </select>
+        <!-- LIBRARY PANEL -->
+        <div class="panel active" id="panel-library">
+            <div class="panel-title">Video Library</div>
+            <div class="panel-desc">Upload a video or paste a URL. Videos are stored for reuse across all modes.</div>
+
+            <div class="card">
+                <div class="card-header">Add New Video</div>
+                <div class="tab-toggle">
+                    <button class="tab-btn active" onclick="showLibInput('url')" id="lib-tab-url">Paste URL</button>
+                    <button class="tab-btn" onclick="showLibInput('file')" id="lib-tab-file">Upload File</button>
+                </div>
+                <div id="lib-input-url">
+                    <div class="url-group">
+                        <input type="text" id="lib-url" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
+                        <button class="btn btn-primary btn-sm" onclick="addVideoFromUrl()">Add to Library</button>
+                    </div>
+                </div>
+                <div id="lib-input-file" style="display:none">
+                    <div class="upload-zone" id="lib-upload-zone">
+                        <div class="icon">&#128253;</div>
+                        <p>Drag & drop or click to browse (MP4, AVI, MOV, MKV, WebM)</p>
+                        <div class="filename" id="lib-file-name"></div>
+                        <input type="file" id="lib-file" accept=".mp4,.avi,.mov,.mkv,.webm,.flv,.wmv,.m4v" onchange="onLibFileSelect(this)">
+                    </div>
+                    <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addVideoFromFile()">Upload to Library</button>
+                </div>
+                <div class="error-box" id="lib-error"></div>
+                <div class="progress-container" id="lib-progress" style="display:none">
+                    <div class="progress-bar-bg"><div class="progress-bar" id="lib-progress-bar"></div></div>
+                    <div class="progress-info"><span class="msg" id="lib-progress-msg">Adding...</span></div>
+                </div>
             </div>
-            <div class="setting-item">
-                <label>Max Clips</label>
-                <input type="number" id="max-clips" value="10" min="1" max="50">
-            </div>
-            <div class="setting-item">
-                <label>Min Hook Score (0-1)</label>
-                <input type="number" id="min-score" value="0.4" min="0.1" max="0.9" step="0.05">
-            </div>
-            <div class="setting-item">
-                <label>Min Clip Duration (sec)</label>
-                <input type="number" id="min-duration" value="15" min="5" max="120">
-            </div>
-            <div class="setting-item">
-                <label>Max Clip Duration (sec)</label>
-                <input type="number" id="max-duration" value="60" min="10" max="180">
-            </div>
-            <div class="setting-item">
-                <div class="checkbox-row">
-                    <input type="checkbox" id="crop-vertical" checked>
-                    <label for="crop-vertical" style="margin:0">Crop to 9:16 (TikTok/Reels)</label>
+
+            <div class="card">
+                <div class="card-header">Your Videos <span id="lib-count" style="color:var(--text-tertiary);font-weight:400;font-size:0.78rem"></span></div>
+                <div id="lib-grid" class="card-grid"></div>
+                <div class="empty-state" id="lib-empty" style="display:none">
+                    <div class="icon">&#128253;</div>
+                    <p>No videos yet. Add one above.</p>
                 </div>
             </div>
         </div>
 
-        <hr style="border-color: var(--border); margin: 20px 0;">
-        <h3 style="font-size: 0.95rem; margin-bottom: 12px;">LLM Fallback (Optional)</h3>
-        <p style="color: var(--text-dim); font-size: 0.8rem; margin-bottom: 12px;">
-            NLP analysis runs first. LLM only activates if NLP finds too few hooks. Configure API keys in the <code>.env</code> file.
-        </p>
-        <div class="api-status" id="api-status"></div>
-        <div class="setting-item" style="margin-top: 12px;">
-            <div class="checkbox-row">
-                <input type="checkbox" id="use-llm">
-                <label for="use-llm" style="margin:0">Enable LLM fallback (uses API keys from .env)</label>
+        <!-- SMART CLIPS PANEL -->
+        <div class="panel" id="panel-smart">
+            <div class="panel-title">Smart Clips</div>
+            <div class="panel-desc">AI analyzes the transcript to find hook-worthy moments and splits automatically.</div>
+
+            <div class="card">
+                <div class="card-header">Select Video</div>
+                <select id="smart-video-select" class="video-select"><option value="">-- Select from library --</option></select>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Settings</div>
+                <div class="settings-grid">
+                    <div class="form-group"><label>Whisper Model</label><select id="s-model"><option value="tiny">Tiny</option><option value="base" selected>Base</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
+                    <div class="form-group"><label>Max Clips</label><input type="number" id="s-max-clips" value="10" min="1" max="50"></div>
+                    <div class="form-group"><label>Min Score (0-1)</label><input type="number" id="s-min-score" value="0.4" min="0.1" max="0.9" step="0.05"></div>
+                    <div class="form-group"><label>Min Duration (s)</label><input type="number" id="s-min-dur" value="15" min="5"></div>
+                    <div class="form-group"><label>Max Duration (s)</label><input type="number" id="s-max-dur" value="60" min="10"></div>
+                    <div class="form-group"><div class="checkbox-row" style="padding-top:20px"><input type="checkbox" id="s-crop" checked><label for="s-crop">9:16 + blurred bg</label></div></div>
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-full" id="btn-smart" onclick="startSmartClip()">Analyze & Split</button>
+            <div class="error-box" id="smart-error"></div>
+
+            <div id="smart-progress" style="display:none;margin-top:16px" class="card">
+                <div class="card-header">Processing</div>
+                <div class="progress-container">
+                    <div class="progress-bar-bg"><div class="progress-bar" id="smart-bar"></div></div>
+                    <div class="progress-info"><span class="msg" id="smart-msg">Starting...</span><span class="pct" id="smart-pct">0%</span></div>
+                </div>
+                <div class="steps-row">
+                    <div class="step" id="ss-download">Download</div>
+                    <div class="step" id="ss-transcribe">Transcribe</div>
+                    <div class="step" id="ss-analyze">Analyze</div>
+                    <div class="step" id="ss-split">Split</div>
+                </div>
+            </div>
+
+            <div id="smart-results" style="display:none">
+                <h3 style="margin:24px 0 14px;font-size:1rem;font-weight:600;letter-spacing:-0.01em">Generated Clips <span class="tag tag-red" id="smart-clip-count"></span></h3>
+                <div id="smart-clips-grid" class="card-grid"></div>
+            </div>
+        </div>
+
+        <!-- MANUAL SPLIT PANEL -->
+        <div class="panel" id="panel-manual">
+            <div class="panel-title">Manual Timestamp Split</div>
+            <div class="panel-desc">Enter exact start/end timestamps to extract specific portions. No AI needed.</div>
+
+            <div class="card">
+                <div class="card-header">Select Video</div>
+                <select id="manual-video-select" class="video-select"><option value="">-- Select from library --</option></select>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Timestamps <button class="btn btn-secondary btn-sm" onclick="addTimestampRow()" style="float:right">+ Add Clip</button></div>
+                <div class="ts-list" id="ts-list">
+                    <div class="ts-row">
+                        <div class="form-group"><label>Start</label><input type="text" placeholder="0:00 or 90" class="ts-start"></div>
+                        <div class="form-group"><label>End</label><input type="text" placeholder="1:30 or 90" class="ts-end"></div>
+                        <div class="form-group ts-label"><label>Label (optional)</label><input type="text" placeholder="intro" class="ts-label-input"></div>
+                        <button class="ts-remove" onclick="this.parentElement.remove()">&#10005;</button>
+                    </div>
+                </div>
+                <div class="checkbox-row" style="margin-top:14px"><input type="checkbox" id="m-crop" checked><label for="m-crop">Fit to 9:16 + blurred background</label></div>
+            </div>
+
+            <button class="btn btn-primary btn-full" onclick="startManualSplit()">Split at Timestamps</button>
+            <div class="error-box" id="manual-error"></div>
+            <div id="manual-results" style="display:none;margin-top:18px">
+                <h3 style="margin-bottom:14px;font-size:1rem;font-weight:600;letter-spacing:-0.01em">Results <span class="tag tag-green" id="manual-count"></span></h3>
+                <div id="manual-clips" class="card-grid"></div>
+            </div>
+        </div>
+
+        <!-- SEQUENTIAL REELS PANEL -->
+        <div class="panel" id="panel-sequential">
+            <div class="panel-title">Sequential Reels</div>
+            <div class="panel-desc">Split the entire video into consecutive 50-60s reels. Every frame covered, nothing skipped.</div>
+
+            <div class="card">
+                <div class="card-header">Select Video</div>
+                <select id="seq-video-select" class="video-select"><option value="">-- Select from library --</option></select>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Reel Settings</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Target Duration (s)</label><input type="number" id="seq-target" value="55" min="15" max="180"></div>
+                    <div class="form-group"><label>Overlap (s)</label><input type="number" id="seq-overlap" value="1.5" min="0" max="5" step="0.5"></div>
+                    <div class="form-group"><div class="checkbox-row" style="padding-top:20px"><input type="checkbox" id="seq-crop" checked><label for="seq-crop">9:16 + blurred bg</label></div></div>
+                </div>
+                <div class="checkbox-row"><input type="checkbox" id="seq-transcript"><label for="seq-transcript">Use transcript for sentence-boundary splitting (slower but cleaner cuts)</label></div>
+            </div>
+
+            <button class="btn btn-primary btn-full" onclick="startSequentialSplit()">Split Into Reels</button>
+            <div class="error-box" id="seq-error"></div>
+            <div id="seq-progress" style="display:none;margin-top:16px" class="card">
+                <div class="progress-container">
+                    <div class="progress-bar-bg"><div class="progress-bar" id="seq-bar"></div></div>
+                    <div class="progress-info"><span class="msg" id="seq-msg">Starting...</span><span class="pct" id="seq-pct">0%</span></div>
+                </div>
+            </div>
+            <div id="seq-results" style="display:none;margin-top:18px">
+                <h3 style="margin-bottom:14px;font-size:1rem;font-weight:600;letter-spacing:-0.01em">Reels <span class="tag tag-purple" id="seq-count"></span></h3>
+                <div id="seq-clips" class="card-grid"></div>
+            </div>
+        </div>
+
+        <!-- TRAINING PANEL -->
+        <div class="panel" id="panel-training">
+            <div class="panel-title">Training Studio</div>
+            <div class="panel-desc">Upload long-form content + short clips to teach the system your clipping style. Private per session.</div>
+
+            <div class="card">
+                <div class="card-header">Training Session</div>
+                <div class="form-row">
+                    <button class="btn btn-primary btn-sm" onclick="createTrainingSession()">New Session</button>
+                    <select id="train-session" class="video-select" style="flex:1"><option value="">-- Select session --</option></select>
+                </div>
+            </div>
+
+            <div id="train-workspace" style="display:none">
+                <div class="training-upload">
+                    <div class="card">
+                        <div class="card-header">Long-Form Examples</div>
+                        <div class="upload-zone" style="padding:22px">
+                            <p>Upload original long videos</p>
+                            <input type="file" accept=".mp4,.avi,.mov,.mkv,.webm" onchange="uploadTrainingVideo(this, 'long')">
+                        </div>
+                        <div class="training-list" id="train-long-list"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">Short-Form Examples</div>
+                        <div class="upload-zone" style="padding:22px">
+                            <p>Upload the clips/reels made from them</p>
+                            <input type="file" accept=".mp4,.avi,.mov,.mkv,.webm" onchange="uploadTrainingVideo(this, 'short')">
+                        </div>
+                        <div class="training-list" id="train-short-list"></div>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-full" onclick="extractPatterns()">Extract Patterns</button>
+                <div id="train-profile" style="display:none;margin-top:16px" class="card">
+                    <div class="card-header">Extracted Profile</div>
+                    <pre id="train-profile-data" style="font-size:0.75rem;color:var(--text-tertiary);overflow-x:auto;white-space:pre-wrap;font-family:var(--mono);line-height:1.7;font-weight:300"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- OUTPUT BROWSER PANEL -->
+        <div class="panel" id="panel-output">
+            <div class="panel-title">Output Browser</div>
+            <div class="panel-desc">Browse all generated clips organized by video and session.</div>
+            <div id="output-list"></div>
+            <div class="empty-state" id="output-empty">
+                <div class="icon">&#128194;</div>
+                <p>No clips generated yet.</p>
+            </div>
+        </div>
+
+        <!-- SETTINGS PANEL -->
+        <div class="panel" id="panel-settings">
+            <div class="panel-title">Settings</div>
+            <div class="panel-desc">API keys and system status.</div>
+
+            <div class="card">
+                <div class="card-header">System Status</div>
+                <div class="api-badges" id="api-badges"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">API Keys</div>
+                <p style="color:var(--text-tertiary);font-size:0.78rem;margin-bottom:16px;line-height:1.6;font-weight:300">Edit the <code style="background:var(--glass-2);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:0.72rem;border:1px solid var(--glass-border)">.env</code> file to add keys. NLP works without any. LLM is optional fallback.</p>
+                <div class="settings-grid">
+                    <div class="api-key-card"><div class="api-provider"><span class="tag tag-blue">Groq</span></div><div class="api-url">console.groq.com/keys</div></div>
+                    <div class="api-key-card"><div class="api-provider"><span class="tag tag-green">Gemini</span></div><div class="api-url">aistudio.google.com/apikey</div></div>
+                    <div class="api-key-card"><div class="api-provider"><span class="tag tag-purple">NVIDIA</span></div><div class="api-url">build.nvidia.com</div></div>
+                </div>
             </div>
         </div>
     </div>
-
-    <!-- Process Button -->
-    <button class="btn-process" id="btn-process" onclick="startProcessing()">
-        Analyze &amp; Split Video
-    </button>
-
-    <!-- Error -->
-    <div class="error-message" id="error-message"></div>
-
-    <!-- Progress -->
-    <div class="progress-section" id="progress-section">
-        <h3 style="margin-bottom: 4px;">Processing</h3>
-        <div class="progress-bar-container">
-            <div class="progress-bar" id="progress-bar"></div>
-        </div>
-        <div class="progress-status">
-            <span class="progress-message" id="progress-message">Starting...</span>
-            <span class="progress-percent" id="progress-percent">0%</span>
-        </div>
-        <div class="steps">
-            <div class="step" id="step-download">Download</div>
-            <div class="step" id="step-transcribe">Transcribe</div>
-            <div class="step" id="step-analyze">Analyze</div>
-            <div class="step" id="step-split">Split</div>
-        </div>
-    </div>
-
-    <!-- Results -->
-    <div class="results-section" id="results-section">
-        <div class="results-header">
-            <h2>Generated Clips</h2>
-            <span class="clip-count" id="clip-count">0 clips</span>
-        </div>
-        <div class="clips-grid" id="clips-grid"></div>
-    </div>
-
 </div>
 
 <script>
-    // ─── Tab Switching ───
-    function switchTab(tab) {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.input-panel').forEach(p => p.classList.remove('active'));
-        document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
-        document.getElementById(`panel-${tab}`).classList.add('active');
-    }
+// State
+let selectedVideoId = null;
+let currentSmartJob = null;
+let smartPoll = null;
 
-    // ─── File Upload ───
-    const fileInput = document.getElementById('video-file');
-    const uploadZone = document.getElementById('upload-zone');
-    const fileName = document.getElementById('file-name');
+// Panel Switching
+function switchPanel(name) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`[data-panel="${name}"]`).classList.add('active');
+    document.getElementById(`panel-${name}`).classList.add('active');
+    if (['smart','manual','sequential'].includes(name)) refreshVideoSelects();
+    if (name === 'output') loadOutputs();
+}
 
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files[0]) {
-            fileName.textContent = e.target.files[0].name;
-        }
-    });
+// Library
+function showLibInput(type) {
+    document.getElementById('lib-input-url').style.display = type === 'url' ? 'block' : 'none';
+    document.getElementById('lib-input-file').style.display = type === 'file' ? 'block' : 'none';
+    document.querySelectorAll('.tab-toggle .tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`lib-tab-${type}`).classList.add('active');
+}
 
-    uploadZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadZone.classList.add('dragover');
-    });
-    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
-    uploadZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadZone.classList.remove('dragover');
-        if (e.dataTransfer.files[0]) {
-            fileInput.files = e.dataTransfer.files;
-            fileName.textContent = e.dataTransfer.files[0].name;
-        }
-    });
+function onLibFileSelect(input) {
+    if (input.files[0]) document.getElementById('lib-file-name').textContent = input.files[0].name;
+}
 
-    // ─── Settings Toggle ───
-    function toggleSettings() {
-        document.getElementById('settings-panel').classList.toggle('open');
-    }
+async function addVideoFromUrl() {
+    const url = document.getElementById('lib-url').value.trim();
+    if (!url) return showErr('lib-error', 'Enter a URL');
+    hideErr('lib-error');
+    showLibProgress('Downloading...');
+    const form = new FormData();
+    form.append('url', url);
+    try {
+        const res = await fetch('/api/library/add', {method:'POST', body: form});
+        const data = await res.json();
+        if (data.error) { showErr('lib-error', data.error); hideLibProgress(); return; }
+        hideLibProgress();
+        document.getElementById('lib-url').value = '';
+        loadLibrary();
+    } catch(e) { showErr('lib-error', e.message); hideLibProgress(); }
+}
 
-    // ─── Load API Key Status ───
-    async function loadApiStatus() {
-        try {
-            const res = await fetch('/api/settings');
-            const data = await res.json();
-            const container = document.getElementById('api-status');
-            container.innerHTML = `
-                <span class="llm-badge ${data.ffmpeg_installed ? 'configured' : 'missing'}">
-                    FFmpeg: ${data.ffmpeg_installed ? 'Installed' : 'NOT FOUND'}
-                </span>
-                <span class="llm-badge ${data.groq_configured ? 'configured' : 'missing'}">
-                    Groq: ${data.groq_configured ? 'Configured' : 'Not Set'}
-                </span>
-                <span class="llm-badge ${data.gemini_configured ? 'configured' : 'missing'}">
-                    Gemini: ${data.gemini_configured ? 'Configured' : 'Not Set'}
-                </span>
-                <span class="llm-badge ${data.nvidia_configured ? 'configured' : 'missing'}">
-                    NVIDIA: ${data.nvidia_configured ? 'Configured' : 'Not Set'}
-                </span>
-            `;
+async function addVideoFromFile() {
+    const file = document.getElementById('lib-file').files[0];
+    if (!file) return showErr('lib-error', 'Select a file');
+    hideErr('lib-error');
+    showLibProgress('Uploading...');
+    const form = new FormData();
+    form.append('video', file);
+    try {
+        const res = await fetch('/api/library/add', {method:'POST', body: form});
+        const data = await res.json();
+        if (data.error) { showErr('lib-error', data.error); hideLibProgress(); return; }
+        hideLibProgress();
+        document.getElementById('lib-file-name').textContent = '';
+        loadLibrary();
+    } catch(e) { showErr('lib-error', e.message); hideLibProgress(); }
+}
 
-            // Show FFmpeg warning banner if missing
-            if (!data.ffmpeg_installed) {
-                document.getElementById('ffmpeg-warning').classList.add('active');
-            }
-        } catch (e) {
-            console.log('Could not load API status');
-        }
-    }
-    loadApiStatus();
-
-    // ─── Processing ───
-    let pollInterval = null;
-
-    async function startProcessing() {
-        const btn = document.getElementById('btn-process');
-        const errorEl = document.getElementById('error-message');
-        errorEl.classList.remove('active');
-
-        // Determine input type
-        const activeTab = document.querySelector('.tab.active').dataset.tab;
-        const formData = new FormData();
-
-        if (activeTab === 'url') {
-            const url = document.getElementById('video-url').value.trim();
-            if (!url) {
-                showError('Please enter a video URL');
-                return;
-            }
-            formData.append('url', url);
-        } else {
-            const file = fileInput.files[0];
-            if (!file) {
-                showError('Please select a video file');
-                return;
-            }
-            formData.append('video', file);
-        }
-
-        // Add settings
-        formData.append('model_size', document.getElementById('model-size').value);
-        formData.append('max_clips', document.getElementById('max-clips').value);
-        formData.append('min_score', document.getElementById('min-score').value);
-        formData.append('min_duration', document.getElementById('min-duration').value);
-        formData.append('max_duration', document.getElementById('max-duration').value);
-        formData.append('crop_vertical', document.getElementById('crop-vertical').checked);
-        formData.append('use_llm', document.getElementById('use-llm').checked);
-
-        // Disable button, show progress
-        btn.disabled = true;
-        btn.textContent = 'Processing...';
-        document.getElementById('progress-section').classList.add('active');
-        document.getElementById('results-section').classList.remove('active');
-        resetSteps();
-
-        try {
-            const res = await fetch('/api/process', { method: 'POST', body: formData });
-            const data = await res.json();
-
-            if (data.error) {
-                showError(data.error);
-                btn.disabled = false;
-                btn.textContent = 'Analyze & Split Video';
-                return;
-            }
-
-            // Start polling for status
-            pollInterval = setInterval(() => pollStatus(data.job_id), 1500);
-        } catch (e) {
-            showError('Failed to start processing: ' + e.message);
-            btn.disabled = false;
-            btn.textContent = 'Analyze & Split Video';
-        }
-    }
-
-    async function pollStatus(jobId) {
-        try {
-            const res = await fetch(`/api/status/${jobId}`);
-            const data = await res.json();
-
-            // Update progress
-            const bar = document.getElementById('progress-bar');
-            const msg = document.getElementById('progress-message');
-            const pct = document.getElementById('progress-percent');
-
-            bar.style.width = (data.progress || 0) + '%';
-            msg.textContent = data.message || data.status;
-            pct.textContent = (data.progress || 0) + '%';
-
-            // Update steps
-            updateSteps(data.status);
-
-            if (data.status === 'completed') {
-                clearInterval(pollInterval);
-                document.getElementById('btn-process').disabled = false;
-                document.getElementById('btn-process').textContent = 'Analyze & Split Video';
-
-                if (data.clips && data.clips.length > 0) {
-                    showResults(data.clips);
-                }
-            } else if (data.status === 'error') {
-                clearInterval(pollInterval);
-                showError(data.error || 'Processing failed');
-                document.getElementById('btn-process').disabled = false;
-                document.getElementById('btn-process').textContent = 'Analyze & Split Video';
-            }
-        } catch (e) {
-            console.error('Poll error:', e);
-        }
-    }
-
-    function updateSteps(status) {
-        const stepMap = {
-            'downloading': 'step-download',
-            'transcribing': 'step-transcribe',
-            'analyzing': 'step-analyze',
-            'splitting': 'step-split',
-        };
-        const order = ['downloading', 'transcribing', 'analyzing', 'splitting'];
-        const currentIdx = order.indexOf(status);
-
-        order.forEach((s, i) => {
-            const el = document.getElementById(stepMap[s]);
-            if (i < currentIdx) el.className = 'step done';
-            else if (i === currentIdx) el.className = 'step active';
-            else el.className = 'step';
-        });
-
-        if (status === 'completed') {
-            Object.values(stepMap).forEach(id => {
-                document.getElementById(id).className = 'step done';
-            });
-        }
-    }
-
-    function resetSteps() {
-        ['step-download', 'step-transcribe', 'step-analyze', 'step-split']
-            .forEach(id => document.getElementById(id).className = 'step');
-    }
-
-    function showResults(clips) {
-        const section = document.getElementById('results-section');
-        const grid = document.getElementById('clips-grid');
-        const count = document.getElementById('clip-count');
-
-        section.classList.add('active');
-        count.textContent = clips.length + ' clip' + (clips.length !== 1 ? 's' : '');
-        grid.innerHTML = '';
-
-        clips.forEach(clip => {
-            const card = document.createElement('div');
-            card.className = 'clip-card';
-            card.innerHTML = `
-                <video class="clip-video" controls preload="metadata">
-                    <source src="${clip.url}" type="video/mp4">
-                </video>
-                <div class="clip-info">
-                    <div class="clip-meta">
-                        <span class="clip-tag score">Score: ${clip.score.toFixed(3)}</span>
-                        <span class="clip-tag time">${clip.start.toFixed(1)}s - ${clip.end.toFixed(1)}s (${clip.duration.toFixed(0)}s)</span>
-                        <span class="clip-tag reason">${clip.reason.replace(/_/g, ' ')}</span>
-                    </div>
-                    <div class="clip-hook-text">"${clip.hook_text}"</div>
-                    <div class="clip-actions">
-                        <a class="btn-download" href="${clip.url}" download="${clip.filename}">Download Clip</a>
-                    </div>
+async function loadLibrary() {
+    try {
+        const res = await fetch('/api/library/list');
+        const data = await res.json();
+        const grid = document.getElementById('lib-grid');
+        const empty = document.getElementById('lib-empty');
+        const count = document.getElementById('lib-count');
+        if (!data.videos || data.videos.length === 0) { grid.innerHTML = ''; empty.style.display = 'block'; count.textContent = ''; return; }
+        empty.style.display = 'none';
+        count.textContent = `(${data.videos.length})`;
+        grid.innerHTML = data.videos.map(v => `
+            <div class="lib-card ${selectedVideoId === v.video_id ? 'selected' : ''}" onclick="selectVideo('${v.video_id}')">
+                <div class="lib-title">${escHtml(v.title)}</div>
+                <div class="lib-meta">
+                    <span class="tag tag-blue">${v.source}</span>
+                    <span class="tag tag-green">${formatDuration(v.duration)}</span>
+                    <span class="tag tag-yellow">${v.file_size_mb} MB</span>
                 </div>
-            `;
-            grid.appendChild(card);
+                <div style="color:var(--text-ghost);font-size:0.65rem;margin-top:8px;font-family:var(--mono);font-weight:300">${v.added_at?.split('T')[0] || ''}</div>
+            </div>
+        `).join('');
+    } catch(e) { console.error(e); }
+}
+
+function selectVideo(id) { selectedVideoId = id; loadLibrary(); refreshVideoSelects(); }
+
+function refreshVideoSelects() {
+    fetch('/api/library/list').then(r => r.json()).then(data => {
+        const videos = data.videos || [];
+        ['smart-video-select','manual-video-select','seq-video-select'].forEach(selId => {
+            const sel = document.getElementById(selId);
+            if (!sel) return;
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">-- Select from library --</option>' +
+                videos.map(v => `<option value="${v.video_id}" ${v.video_id === (selectedVideoId||cur) ? 'selected' : ''}>${escHtml(v.title)} (${formatDuration(v.duration)})</option>`).join('');
         });
-    }
+    });
+}
 
-    function showError(msg) {
-        const el = document.getElementById('error-message');
-        el.textContent = msg;
-        el.classList.add('active');
+function showLibProgress(msg) { document.getElementById('lib-progress').style.display='block'; document.getElementById('lib-progress-msg').textContent=msg; }
+function hideLibProgress() { document.getElementById('lib-progress').style.display='none'; }
+
+// Smart Clips
+async function startSmartClip() {
+    const videoId = document.getElementById('smart-video-select').value;
+    if (!videoId) return showErr('smart-error', 'Select a video first');
+    hideErr('smart-error');
+    const form = new FormData();
+    form.append('video_id', videoId);
+    form.append('model_size', document.getElementById('s-model').value);
+    form.append('max_clips', document.getElementById('s-max-clips').value);
+    form.append('min_score', document.getElementById('s-min-score').value);
+    form.append('min_duration', document.getElementById('s-min-dur').value);
+    form.append('max_duration', document.getElementById('s-max-dur').value);
+    form.append('crop_vertical', document.getElementById('s-crop').checked);
+    document.getElementById('btn-smart').disabled = true;
+    document.getElementById('smart-progress').style.display = 'block';
+    document.getElementById('smart-results').style.display = 'none';
+    try {
+        const res = await fetch('/api/smart-clip', {method:'POST', body: form});
+        const data = await res.json();
+        if (data.error) { showErr('smart-error', data.error); document.getElementById('btn-smart').disabled = false; return; }
+        currentSmartJob = data.job_id;
+        smartPoll = setInterval(() => pollSmartJob(data.job_id), 1500);
+    } catch(e) { showErr('smart-error', e.message); document.getElementById('btn-smart').disabled = false; }
+}
+
+async function pollSmartJob(jobId) {
+    const res = await fetch(`/api/status/${jobId}`);
+    const d = await res.json();
+    document.getElementById('smart-bar').style.width = (d.progress||0)+'%';
+    document.getElementById('smart-msg').textContent = d.message || d.status;
+    document.getElementById('smart-pct').textContent = (d.progress||0)+'%';
+    updateSmartSteps(d.status);
+    if (d.status === 'completed') {
+        clearInterval(smartPoll);
+        document.getElementById('btn-smart').disabled = false;
+        if (d.clips?.length) showSmartResults(d.clips, jobId);
+    } else if (d.status === 'error') {
+        clearInterval(smartPoll);
+        showErr('smart-error', d.error);
+        document.getElementById('btn-smart').disabled = false;
     }
+}
+
+function updateSmartSteps(status) {
+    const map = {downloading:'ss-download',transcribing:'ss-transcribe',analyzing:'ss-analyze',splitting:'ss-split'};
+    const order = ['downloading','transcribing','analyzing','splitting'];
+    const idx = order.indexOf(status);
+    order.forEach((s,i) => {
+        const el = document.getElementById(map[s]);
+        if (i < idx) el.className = 'step done';
+        else if (i === idx) el.className = 'step active';
+        else el.className = 'step';
+    });
+    if (status === 'completed') Object.values(map).forEach(id => document.getElementById(id).className = 'step done');
+}
+
+function showSmartResults(clips, jobId) {
+    document.getElementById('smart-results').style.display = 'block';
+    document.getElementById('smart-clip-count').textContent = clips.length + ' clips';
+    document.getElementById('smart-clips-grid').innerHTML = clips.map(c => clipCardHtml(c, jobId)).join('');
+}
+
+// Manual Split
+function addTimestampRow() {
+    const list = document.getElementById('ts-list');
+    const row = document.createElement('div');
+    row.className = 'ts-row';
+    row.innerHTML = `
+        <div class="form-group"><label>Start</label><input type="text" placeholder="0:00" class="ts-start"></div>
+        <div class="form-group"><label>End</label><input type="text" placeholder="1:30" class="ts-end"></div>
+        <div class="form-group ts-label"><label>Label</label><input type="text" placeholder="" class="ts-label-input"></div>
+        <button class="ts-remove" onclick="this.parentElement.remove()">&#10005;</button>`;
+    list.appendChild(row);
+}
+
+async function startManualSplit() {
+    const videoId = document.getElementById('manual-video-select').value;
+    if (!videoId) return showErr('manual-error', 'Select a video');
+    hideErr('manual-error');
+    const rows = document.querySelectorAll('#ts-list .ts-row');
+    const clips = [];
+    rows.forEach(row => {
+        const start = row.querySelector('.ts-start').value.trim();
+        const end = row.querySelector('.ts-end').value.trim();
+        const label = row.querySelector('.ts-label-input').value.trim();
+        if (start && end) clips.push({start, end, label});
+    });
+    if (!clips.length) return showErr('manual-error', 'Add at least one timestamp pair');
+    const form = new FormData();
+    form.append('video_id', videoId);
+    form.append('clips', JSON.stringify(clips));
+    form.append('crop_vertical', document.getElementById('m-crop').checked);
+    try {
+        const res = await fetch('/api/manual-split', {method:'POST', body: form});
+        const data = await res.json();
+        if (data.error) return showErr('manual-error', data.error);
+        showManualResults(data.results, data.job_id);
+    } catch(e) { showErr('manual-error', e.message); }
+}
+
+function showManualResults(results, jobId) {
+    const ok = results.filter(r => r.success);
+    document.getElementById('manual-results').style.display = 'block';
+    document.getElementById('manual-count').textContent = ok.length + ' clips';
+    document.getElementById('manual-clips').innerHTML = ok.map(r => `
+        <div class="clip-card">
+            <video class="clip-video" controls preload="metadata"><source src="/clips/${jobId}/${r.filename}" type="video/mp4"></video>
+            <div class="clip-info">
+                <div class="clip-meta">
+                    <span class="tag tag-blue">${r.start?.toFixed(1)}s - ${r.end?.toFixed(1)}s</span>
+                    <span class="tag tag-green">${r.duration?.toFixed(0)}s</span>
+                    ${r.label ? `<span class="tag tag-yellow">${escHtml(r.label)}</span>` : ''}
+                </div>
+                <a class="btn-download" href="/clips/${jobId}/${r.filename}" download>Download</a>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Sequential Reels
+async function startSequentialSplit() {
+    const videoId = document.getElementById('seq-video-select').value;
+    if (!videoId) return showErr('seq-error', 'Select a video');
+    hideErr('seq-error');
+    const form = new FormData();
+    form.append('video_id', videoId);
+    form.append('target_duration', document.getElementById('seq-target').value);
+    form.append('overlap', document.getElementById('seq-overlap').value);
+    form.append('crop_vertical', document.getElementById('seq-crop').checked);
+    form.append('use_transcript', document.getElementById('seq-transcript').checked);
+    document.getElementById('seq-progress').style.display = 'block';
+    document.getElementById('seq-results').style.display = 'none';
+    try {
+        const res = await fetch('/api/sequential-split', {method:'POST', body: form});
+        const data = await res.json();
+        if (data.error) return showErr('seq-error', data.error);
+        const poll = setInterval(async () => {
+            const sr = await fetch(`/api/status/${data.job_id}`);
+            const sd = await sr.json();
+            document.getElementById('seq-bar').style.width = (sd.progress||0)+'%';
+            document.getElementById('seq-msg').textContent = sd.message || '';
+            document.getElementById('seq-pct').textContent = (sd.progress||0)+'%';
+            if (sd.status === 'completed') {
+                clearInterval(poll);
+                document.getElementById('seq-progress').style.display = 'none';
+                if (sd.reels?.length) showSeqResults(sd.reels, data.job_id);
+                else if (!sd.error) showErr('seq-error', sd.message || 'No reels produced');
+            } else if (sd.status === 'error') {
+                clearInterval(poll);
+                document.getElementById('seq-progress').style.display = 'none';
+                showErr('seq-error', sd.error);
+            }
+        }, 2000);
+    } catch(e) { showErr('seq-error', e.message); }
+}
+
+function showSeqResults(reels, jobId) {
+    document.getElementById('seq-results').style.display = 'block';
+    document.getElementById('seq-count').textContent = reels.length + ' reels';
+    document.getElementById('seq-clips').innerHTML = reels.map(r => `
+        <div class="clip-card">
+            <video class="clip-video" controls preload="metadata"><source src="/clips/${jobId}/${r.filename}" type="video/mp4"></video>
+            <div class="clip-info">
+                <div class="clip-meta">
+                    <span class="tag tag-purple">Reel ${r.reel_number}/${r.total_reels}</span>
+                    <span class="tag tag-blue">${r.start?.toFixed(1)}s - ${r.end?.toFixed(1)}s</span>
+                    <span class="tag tag-green">${r.duration?.toFixed(0)}s</span>
+                </div>
+                <a class="btn-download" href="/clips/${jobId}/${r.filename}" download>Download</a>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Training
+async function createTrainingSession() {
+    const res = await fetch('/api/training/create', {method:'POST'});
+    const data = await res.json();
+    loadTrainingSessions();
+    document.getElementById('train-session').value = data.session_id;
+    document.getElementById('train-workspace').style.display = 'block';
+}
+
+async function loadTrainingSessions() {
+    const res = await fetch('/api/training/sessions');
+    const data = await res.json();
+    const sel = document.getElementById('train-session');
+    sel.innerHTML = '<option value="">-- Select session --</option>' +
+        (data.sessions||[]).map(s => `<option value="${s.session_id}">${s.session_id} (${s.long_form_count}L + ${s.short_form_count}S)</option>`).join('');
+}
+
+document.getElementById('train-session').addEventListener('change', function() {
+    document.getElementById('train-workspace').style.display = this.value ? 'block' : 'none';
+});
+
+async function uploadTrainingVideo(input, type) {
+    const file = input.files[0];
+    if (!file) return;
+    const sessionId = document.getElementById('train-session').value;
+    if (!sessionId) return alert('Select a training session first');
+    const form = new FormData();
+    form.append('video', file);
+    form.append('session_id', sessionId);
+    form.append('type', type);
+    const res = await fetch('/api/training/upload', {method:'POST', body: form});
+    const data = await res.json();
+    const list = document.getElementById(type === 'long' ? 'train-long-list' : 'train-short-list');
+    list.innerHTML += `<div class="training-item"><span>${escHtml(file.name)}</span><span class="tag tag-green">Added</span></div>`;
+    input.value = '';
+}
+
+async function extractPatterns() {
+    const sessionId = document.getElementById('train-session').value;
+    if (!sessionId) return;
+    const res = await fetch('/api/training/extract', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({session_id: sessionId})});
+    const data = await res.json();
+    document.getElementById('train-profile').style.display = 'block';
+    document.getElementById('train-profile-data').textContent = JSON.stringify(data.profile, null, 2);
+}
+
+// Settings & Init
+async function loadSettings() {
+    try {
+        const res = await fetch('/api/settings');
+        const d = await res.json();
+        document.getElementById('api-badges').innerHTML = `
+            <span class="badge ${d.ffmpeg_installed?'badge-ok':'badge-warn'}">FFmpeg: ${d.ffmpeg_installed?'OK':'Missing'}</span>
+            <span class="badge ${d.groq_configured?'badge-ok':'badge-warn'}">Groq: ${d.groq_configured?'Set':'Not Set'}</span>
+            <span class="badge ${d.gemini_configured?'badge-ok':'badge-warn'}">Gemini: ${d.gemini_configured?'Set':'Not Set'}</span>
+            <span class="badge ${d.nvidia_configured?'badge-ok':'badge-warn'}">NVIDIA: ${d.nvidia_configured?'Set':'Not Set'}</span>
+        `;
+        if (!d.ffmpeg_installed) document.getElementById('ffmpeg-warning').classList.add('active');
+    } catch(e) {}
+}
+
+async function loadOutputs() {
+    try {
+        const res = await fetch('/api/library/list');
+        const data = await res.json();
+        const list = document.getElementById('output-list');
+        const empty = document.getElementById('output-empty');
+        const videos = (data.videos||[]).filter(v => v.clips_directories?.length);
+        if (!videos.length) { empty.style.display = 'block'; list.innerHTML = ''; return; }
+        empty.style.display = 'none';
+        list.innerHTML = videos.map(v => `
+            <div class="output-card">
+                <div class="dir-name">${escHtml(v.title)}</div>
+                <div class="dir-meta">${v.clips_directories.length} clip session(s) &middot; ${formatDuration(v.duration)}</div>
+            </div>
+        `).join('');
+    } catch(e) {}
+}
+
+// Helpers
+function clipCardHtml(c, jobId) {
+    return `<div class="clip-card">
+        <video class="clip-video" controls preload="metadata"><source src="/clips/${jobId}/${c.filename}" type="video/mp4"></video>
+        <div class="clip-info">
+            <div class="clip-meta">
+                <span class="tag tag-red">Score: ${c.score?.toFixed(3)}</span>
+                <span class="tag tag-blue">${c.start?.toFixed(1)}s - ${c.end?.toFixed(1)}s (${c.duration?.toFixed(0)}s)</span>
+                <span class="tag tag-green">${(c.reason||'').replace(/_/g,' ')}</span>
+            </div>
+            <div class="clip-text">"${escHtml((c.hook_text||'').substring(0,150))}"</div>
+            <div class="clip-actions"><a class="btn-download" href="/clips/${jobId}/${c.filename}" download="${c.filename}">Download</a></div>
+        </div>
+    </div>`;
+}
+
+function showErr(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.classList.add('active'); }
+function hideErr(id) { document.getElementById(id).classList.remove('active'); }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
+function formatDuration(s) { if (!s) return '?'; const m = Math.floor(s/60); const sec = Math.floor(s%60); return m > 0 ? `${m}m${sec}s` : `${sec}s`; }
+
+// Drag & drop enhancement
+document.querySelectorAll('.upload-zone').forEach(zone => {
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', () => zone.classList.remove('dragover'));
+});
+
+// Init
+loadLibrary();
+loadSettings();
+loadTrainingSessions();
 </script>
-
 </body>
 </html>
