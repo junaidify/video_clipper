@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLIPPER - Clip Editor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #111111;
+            --bg-card: #1a1a1a;
+            --bg-elevated: #222222;
+            --bg-input: #161616;
+            --lime: #CAFF00;
+            --lime-dim: #a8d600;
+            --lime-glow: rgba(202,255,0,0.12);
+            --lime-glow-strong: rgba(202,255,0,0.25);
+            --lime-subtle: rgba(202,255,0,0.06);
+            --border: #2a2a2a;
+            --border-hover: #3a3a3a;
+            --green: #34d399;
+            --green-glass: rgba(52,211,153,0.10);
+            --red: #f87171;
+            --red-glass: rgba(248,113,113,0.10);
+            --blue: #60a5fa;
+            --blue-glass: rgba(96,165,250,0.10);
+            --yellow: #fbbf24;
+            --purple: #a78bfa;
+            --white: #ffffff;
+            --text: #e8e8e8;
+            --text-secondary: #999999;
+            --text-dim: #666666;
+            --text-ghost: #444444;
+            --display: 'Bebas Neue', sans-serif;
+            --sans: 'Inter', -apple-system, system-ui, sans-serif;
+            --mono: 'JetBrains Mono', monospace;
+            --radius: 16px;
+            --radius-sm: 12px;
+            --radius-xs: 8px;
+            --ease: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ═══ Top Bar ═══ */
+        .topbar {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 32px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-card);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-back {
+            display: flex; align-items: center; gap: 6px;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: color 0.2s;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .topbar-back:hover { color: var(--lime); border-color: var(--lime); }
+        .topbar-back svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .topbar-title {
+            font-family: var(--display);
+            font-size: 1.3rem;
+            color: var(--white);
+            letter-spacing: 0.06em;
+        }
+        .topbar-file {
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            font-family: var(--mono);
+            margin-left: auto;
+        }
+
+        /* ═══ Layout ═══ */
+        .editor-layout {
+            display: grid;
+            grid-template-columns: 1fr 420px;
+            gap: 0;
+            min-height: calc(100vh - 65px);
+        }
+
+        /* ═══ Video Panel ═══ */
+        .video-panel {
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #0a0a0a;
+        }
+        .video-panel video {
+            max-width: 100%;
+            max-height: 70vh;
+            border-radius: var(--radius);
+            background: #000;
+        }
+        .video-filename {
+            margin-top: 16px;
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            font-family: var(--mono);
+        }
+
+        /* ═══ Tools Panel ═══ */
+        .tools-panel {
+            border-left: 1px solid var(--border);
+            overflow-y: auto;
+            max-height: calc(100vh - 65px);
+        }
+        .tool-section {
+            padding: 28px;
+            border-bottom: 1px solid var(--border);
+        }
+        .tool-section-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tool-section-header .ts-icon {
+            width: 36px; height: 36px;
+            background: var(--lime-subtle);
+            border: 1px solid rgba(202,255,0,0.12);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .tool-section-header .ts-icon svg {
+            width: 17px; height: 17px;
+            stroke: var(--lime); fill: none;
+            stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .tool-section-header h3 {
+            font-family: var(--display);
+            font-size: 1.15rem;
+            color: var(--white);
+            letter-spacing: 0.06em;
+        }
+        .tool-desc {
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            line-height: 1.6;
+            margin-bottom: 18px;
+        }
+
+        /* ═══ Form ═══ */
+        label {
+            display: block;
+            font-family: var(--display);
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            letter-spacing: 0.1em;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: var(--radius-xs);
+            border: 1px solid var(--border);
+            background: var(--bg-input);
+            color: var(--text);
+            font-size: 0.88rem;
+            font-family: var(--sans);
+            outline: none;
+            transition: all 0.3s var(--ease);
+        }
+        input:focus, select:focus { border-color: rgba(202,255,0,0.4); box-shadow: 0 0 0 3px rgba(202,255,0,0.06); }
+        input::placeholder { color: var(--text-ghost); }
+
+        /* ═══ Buttons ═══ */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: var(--radius-xs);
+            cursor: pointer;
+            font-size: 0.88rem;
+            font-weight: 600;
+            font-family: var(--sans);
+            transition: all 0.3s var(--ease);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            justify-content: center;
+        }
+        .btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .btn-primary { background: var(--lime); color: #111; }
+        .btn-primary:hover { background: var(--lime-dim); box-shadow: 0 4px 20px var(--lime-glow); }
+        .btn-primary:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-secondary { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); }
+        .btn-secondary:hover { border-color: var(--border-hover); color: var(--white); }
+
+        /* ═══ Progress Bar ═══ */
+        .progress-wrap {
+            margin-top: 16px;
+            display: none;
+        }
+        .progress-wrap.active { display: block; }
+        .progress-bar-bg {
+            height: 6px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: var(--lime);
+            border-radius: 3px;
+            transition: width 0.5s var(--ease);
+            width: 0%;
+            box-shadow: 0 0 12px var(--lime-glow);
+        }
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 0.78rem;
+        }
+        .progress-info .msg { color: var(--text-dim); }
+        .progress-info .pct { color: var(--lime); font-family: var(--mono); font-weight: 600; }
+
+        /* ═══ Result Links ═══ */
+        .result-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xs);
+            margin-top: 12px;
+            color: var(--lime);
+            text-decoration: none;
+            font-size: 0.84rem;
+            font-weight: 500;
+            transition: all 0.3s var(--ease);
+        }
+        .result-link:hover { border-color: var(--lime); background: var(--lime-subtle); }
+        .result-link svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+        .result-link .rl-label { flex: 1; }
+
+        /* ═══ Overlay Canvas ═══ */
+        .ov-canvas {
+            position: relative;
+            background: #000;
+            border-radius: var(--radius-xs);
+            overflow: hidden;
+            margin-bottom: 16px;
+            cursor: crosshair;
+        }
+        .ov-canvas img { width: 100%; display: block; user-select: none; }
+        .ov-handle {
+            position: absolute;
+            cursor: move;
+            padding: 4px 10px;
+            border: 2px dashed rgba(202,255,0,0.5);
+            border-radius: 4px;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.9);
+            white-space: nowrap;
+            user-select: none;
+            z-index: 10;
+        }
+        .ov-handle:hover, .ov-handle.dragging { border-color: var(--lime); }
+
+        .word-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+        .word-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 10px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.84rem; font-weight: 600;
+        }
+        .word-chip input[type="color"] { width: 22px; height: 22px; border: none; padding: 0; border-radius: 3px; cursor: pointer; background: transparent; }
+
+        /* ═══ Thumb Preview ═══ */
+        .thumb-img { width: 100%; border-radius: var(--radius-xs); border: 1px solid var(--border); margin-top: 12px; }
+
+        /* ═══ Status Badge ═══ */
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.74rem;
+            font-weight: 600;
+        }
+        .status-badge.success { background: var(--green-glass); color: var(--green); }
+        .status-badge.error { background: var(--red-glass); color: var(--red); }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1s linear infinite; }
+
+        @media (max-width: 900px) {
+            .editor-layout { grid-template-columns: 1fr; }
+            .tools-panel { border-left: none; border-top: 1px solid var(--border); max-height: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <a href="/app" class="topbar-back">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Back
+    </a>
+    <div class="topbar-title">CLIP EDITOR</div>
+    <div class="topbar-file" id="editor-filename"></div>
+</div>
+
+<div class="editor-layout">
+    <!-- Video Preview -->
+    <div class="video-panel">
+        <video id="editor-video" controls preload="metadata">
+            <source id="editor-source" src="" type="video/mp4">
+        </video>
+        <div class="video-filename" id="editor-file-label"></div>
+    </div>
+
+    <!-- Tools Sidebar -->
+    <div class="tools-panel">
+
+        <!-- SUBTITLES -->
+        <div class="tool-section">
+            <div class="tool-section-header">
+                <div class="ts-icon"><svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="14" x2="23" y2="14"/></svg></div>
+                <h3>SUBTITLES</h3>
+            </div>
+            <p class="tool-desc">Generate subtitles using Whisper (local). Falls back to Gemini API if Whisper isn't available.</p>
+            <button class="btn btn-primary" id="btn-sub" onclick="runSubtitles()">
+                <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="14" x2="23" y2="14"/></svg>
+                Generate Subtitles
+            </button>
+            <div class="progress-wrap" id="sub-progress">
+                <div class="progress-bar-bg"><div class="progress-bar" id="sub-bar"></div></div>
+                <div class="progress-info"><span class="msg" id="sub-msg">Initializing...</span><span class="pct" id="sub-pct">0%</span></div>
+            </div>
+            <div id="sub-results"></div>
+        </div>
+
+        <!-- TEXT OVERLAY -->
+        <div class="tool-section">
+            <div class="tool-section-header">
+                <div class="ts-icon"><svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></div>
+                <h3>TEXT OVERLAY</h3>
+            </div>
+            <p class="tool-desc">Add a headline with per-word colors. Drag to position on the frame.</p>
+
+            <div class="ov-canvas" id="ov-canvas"
+                 onmousedown="ovMouseDown(event)"
+                 onmousemove="ovMouseMove(event)"
+                 onmouseup="ovMouseUp(event)">
+                <img id="ov-frame" src="" alt="Frame preview" style="display:none">
+                <div style="color:var(--text-ghost);font-size:0.82rem;text-align:center;padding:60px 20px" id="ov-placeholder">Click "Load Frame" to preview</div>
+            </div>
+            <button class="btn btn-secondary" onclick="loadFrame()" style="margin-bottom:14px;font-size:0.82rem;padding:10px">Load Frame Preview</button>
+
+            <div style="margin-bottom:14px">
+                <label>HEADLINE TEXT</label>
+                <input type="text" id="ov-text" placeholder="Your headline here..." oninput="updateOvText()">
+            </div>
+            <div class="word-chips" id="ov-chips"></div>
+            <div style="display:flex;gap:10px;margin-bottom:14px">
+                <div style="flex:1"><label>FONT SIZE</label><input type="number" id="ov-fontsize" value="48" min="16" max="120"></div>
+            </div>
+
+            <button class="btn btn-primary" id="btn-ov" onclick="runOverlay()">
+                <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+                Apply Overlay
+            </button>
+            <div class="progress-wrap" id="ov-progress">
+                <div class="progress-bar-bg"><div class="progress-bar" id="ov-bar"></div></div>
+                <div class="progress-info"><span class="msg" id="ov-msg">Processing...</span><span class="pct" id="ov-pct">0%</span></div>
+            </div>
+            <div id="ov-results"></div>
+        </div>
+
+        <!-- THUMBNAIL -->
+        <div class="tool-section">
+            <div class="tool-section-header">
+                <div class="ts-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+                <h3>THUMBNAIL</h3>
+            </div>
+            <p class="tool-desc">Generate a click-worthy thumbnail. Template mode is local; AI mode uses Gemini to pick the best frame and suggest text.</p>
+
+            <div style="margin-bottom:14px">
+                <label>THUMBNAIL TITLE</label>
+                <input type="text" id="thumb-title" placeholder="Short punchy headline...">
+            </div>
+            <div style="display:flex;gap:10px;margin-bottom:8px">
+                <button class="btn btn-primary" style="flex:1" onclick="runThumb('template')">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    Template
+                </button>
+                <button class="btn btn-secondary" style="flex:1" onclick="runThumb('ai')">
+                    <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    AI (Gemini)
+                </button>
+            </div>
+            <div class="progress-wrap" id="thumb-progress">
+                <div class="progress-bar-bg"><div class="progress-bar" id="thumb-bar"></div></div>
+                <div class="progress-info"><span class="msg" id="thumb-msg">Generating...</span><span class="pct" id="thumb-pct">0%</span></div>
+            </div>
+            <div id="thumb-results"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ═══ Parse URL params ═══
+const params = new URLSearchParams(window.location.search);
+const jobId = params.get('job');
+const filename = params.get('file');
+
+if (!jobId || !filename) {
+    document.querySelector('.video-panel').innerHTML = '<p style="color:var(--red);padding:40px">Missing job or file parameter. Go back and click a clip to edit.</p>';
+}
+
+// Set video source
+const clipUrl = `/clips/${jobId}/${filename}`;
+document.getElementById('editor-source').src = clipUrl;
+document.getElementById('editor-video').load();
+document.getElementById('editor-filename').textContent = filename;
+document.getElementById('editor-file-label').textContent = `${jobId} / ${filename}`;
+
+// ═══ Progress Helper ═══
+function showProgress(prefix, msg, pct) {
+    const wrap = document.getElementById(`${prefix}-progress`);
+    wrap.classList.add('active');
+    document.getElementById(`${prefix}-bar`).style.width = pct + '%';
+    document.getElementById(`${prefix}-msg`).textContent = msg;
+    document.getElementById(`${prefix}-pct`).textContent = pct + '%';
+}
+function hideProgress(prefix) {
+    document.getElementById(`${prefix}-progress`).classList.remove('active');
+}
+function simulateProgress(prefix, msg, duration, callback) {
+    showProgress(prefix, msg, 5);
+    let pct = 5;
+    const interval = setInterval(() => {
+        pct = Math.min(pct + Math.random() * 8, 90);
+        showProgress(prefix, msg, Math.round(pct));
+    }, duration / 12);
+    return { stop: (finalMsg) => { clearInterval(interval); showProgress(prefix, finalMsg || 'Done', 100); setTimeout(() => hideProgress(prefix), 2000); }, fail: (errMsg) => { clearInterval(interval); showProgress(prefix, errMsg, pct); document.getElementById(`${prefix}-bar`).style.background = 'var(--red)'; } };
+}
+
+// ═══ SUBTITLES ═══
+async function runSubtitles() {
+    const btn = document.getElementById('btn-sub');
+    btn.disabled = true;
+    const prog = simulateProgress('sub', 'Transcribing with Whisper...', 30000);
+
+    try {
+        const res = await fetch('/api/clips/subtitle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: jobId, filename: filename, model_size: 'base' })
+        });
+        const data = await res.json();
+        if (data.error) {
+            prog.fail('Error: ' + data.error);
+            document.getElementById('sub-results').innerHTML = `<div class="status-badge error" style="margin-top:12px">${data.error}</div>`;
+        } else {
+            prog.stop(`Done via ${data.method} — ${data.word_count} words`);
+            document.getElementById('sub-results').innerHTML = `
+                <a class="result-link" href="${data.subtitled_url}" target="_blank">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <span class="rl-label">Subtitled Video</span>
+                </a>
+                <a class="result-link" href="${data.srt_url}" download>
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span class="rl-label">Download .SRT</span>
+                </a>
+            `;
+        }
+    } catch(e) {
+        prog.fail('Network error');
+    }
+    btn.disabled = false;
+}
+
+// ═══ TEXT OVERLAY ═══
+let ovState = { x: 0.5, y: 0.4, words: [], dragging: false, frameW: 0, frameH: 0 };
+
+async function loadFrame() {
+    try {
+        const res = await fetch('/api/clips/frame', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: jobId, filename: filename, timestamp: 0.5 })
+        });
+        const data = await res.json();
+        if (data.success) {
+            const img = document.getElementById('ov-frame');
+            img.src = data.frame;
+            img.style.display = 'block';
+            document.getElementById('ov-placeholder').style.display = 'none';
+            ovState.frameW = data.width;
+            ovState.frameH = data.height;
+        }
+    } catch(e) { console.error(e); }
+}
+
+function updateOvText() {
+    const text = document.getElementById('ov-text').value;
+    const words = text.split(/\s+/).filter(Boolean);
+    const colors = ['#CAFF00', '#FFFFFF', '#60a5fa', '#f87171', '#34d399'];
+    ovState.words = words.map((w, i) => ({
+        word: w,
+        color: ovState.words[i]?.word === w ? ovState.words[i].color : (i === 0 ? colors[0] : colors[1])
+    }));
+    renderOvChips();
+    renderOvHandle();
+}
+
+function renderOvChips() {
+    document.getElementById('ov-chips').innerHTML = ovState.words.map((w, i) => `
+        <div class="word-chip">
+            <input type="color" value="${w.color}" onchange="ovState.words[${i}].color=this.value;renderOvHandle()">
+            <span style="color:${w.color}">${esc(w.word)}</span>
+        </div>
+    `).join('');
+}
+
+function renderOvHandle() {
+    document.querySelectorAll('.ov-handle').forEach(el => el.remove());
+    if (!ovState.words.length) return;
+    const canvas = document.getElementById('ov-canvas');
+    const fs = parseInt(document.getElementById('ov-fontsize').value) || 48;
+    const scale = (document.getElementById('ov-frame').clientWidth || 300) / (ovState.frameW || 1080);
+    const handle = document.createElement('div');
+    handle.className = 'ov-handle';
+    handle.style.fontSize = Math.max(10, fs * scale) + 'px';
+    handle.style.left = (ovState.x * 100) + '%';
+    handle.style.top = (ovState.y * 100) + '%';
+    handle.style.transform = 'translate(-50%, -50%)';
+    handle.innerHTML = ovState.words.map(w => `<span style="color:${w.color}">${esc(w.word)}</span>`).join(' ');
+    canvas.appendChild(handle);
+}
+
+function ovMouseDown(e) {
+    if (e.target.closest('.ov-handle')) { ovState.dragging = true; return; }
+    const rect = document.getElementById('ov-canvas').getBoundingClientRect();
+    ovState.x = clamp((e.clientX - rect.left) / rect.width);
+    ovState.y = clamp((e.clientY - rect.top) / rect.height);
+    renderOvHandle();
+}
+function ovMouseMove(e) {
+    if (!ovState.dragging) return;
+    const rect = document.getElementById('ov-canvas').getBoundingClientRect();
+    ovState.x = clamp((e.clientX - rect.left) / rect.width);
+    ovState.y = clamp((e.clientY - rect.top) / rect.height);
+    renderOvHandle();
+}
+function ovMouseUp() { ovState.dragging = false; }
+
+async function runOverlay() {
+    if (!ovState.words.length) return alert('Type some text first');
+    const btn = document.getElementById('btn-ov');
+    btn.disabled = true;
+    const prog = simulateProgress('ov', 'Burning text overlay...', 15000);
+
+    try {
+        const res = await fetch('/api/clips/overlay', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                job_id: jobId, filename: filename,
+                text_blocks: [{ text: ovState.words.map(w=>w.word).join(' '), x: ovState.x, y: ovState.y, font_size: parseInt(document.getElementById('ov-fontsize').value)||48, words: ovState.words }]
+            })
+        });
+        const data = await res.json();
+        if (data.error) {
+            prog.fail('Error: ' + data.error);
+            document.getElementById('ov-results').innerHTML = `<div class="status-badge error" style="margin-top:12px">${data.error}</div>`;
+        } else {
+            prog.stop('Overlay applied');
+            document.getElementById('ov-results').innerHTML = `
+                <a class="result-link" href="${data.overlay_url}" target="_blank">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <span class="rl-label">View Overlaid Video</span>
+                </a>
+                <a class="result-link" href="${data.overlay_url}" download>
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span class="rl-label">Download</span>
+                </a>
+            `;
+        }
+    } catch(e) { prog.fail('Network error'); }
+    btn.disabled = false;
+}
+
+// ═══ THUMBNAIL ═══
+async function runThumb(mode) {
+    const title = document.getElementById('thumb-title').value.trim() || 'Untitled';
+    const prog = simulateProgress('thumb', mode === 'ai' ? 'AI analyzing frames...' : 'Generating template...', mode === 'ai' ? 25000 : 10000);
+
+    try {
+        const res = await fetch('/api/clips/thumbnail', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: jobId, filename: filename, title: title, mode: mode })
+        });
+        const data = await res.json();
+        if (data.error) {
+            prog.fail('Error: ' + data.error);
+            document.getElementById('thumb-results').innerHTML = `<div class="status-badge error" style="margin-top:12px">${data.error}</div>`;
+        } else {
+            prog.stop(`${mode} thumbnail ready`);
+            document.getElementById('thumb-results').innerHTML = `
+                <img class="thumb-img" src="${data.thumbnail_url}?t=${Date.now()}" alt="Thumbnail">
+                <a class="result-link" href="${data.thumbnail_url}" download>
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span class="rl-label">Download Thumbnail</span>
+                </a>
+            `;
+        }
+    } catch(e) { prog.fail('Network error'); }
+}
+
+// ═══ Helpers ═══
+function esc(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
+function clamp(v) { return Math.max(0.05, Math.min(0.95, v)); }
+</script>
+</body>
+</html>

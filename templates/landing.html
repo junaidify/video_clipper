@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLIPPER - Video Auto-Clipper | AI-Powered Video Splitting</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ═══════════════════════════════════════════════
+           RESET & VARIABLES
+           ═══════════════════════════════════════════════ */
+        :root {
+            --bg: #111111;
+            --bg-card: #1a1a1a;
+            --bg-elevated: #222222;
+            --lime: #CAFF00;
+            --lime-dim: #a8d600;
+            --lime-glow: rgba(202,255,0,0.15);
+            --lime-glow-strong: rgba(202,255,0,0.30);
+            --white: #ffffff;
+            --text: #e8e8e8;
+            --text-secondary: #999999;
+            --text-dim: #666666;
+            --border: #2a2a2a;
+            --border-hover: #3a3a3a;
+            --display: 'Bebas Neue', sans-serif;
+            --sans: 'Inter', -apple-system, system-ui, sans-serif;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --ease: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; text-decoration: none; }
+        img { max-width: 100%; display: block; }
+
+        /* ═══════════════════════════════════════════════
+           FADE-IN ON SCROLL
+           ═══════════════════════════════════════════════ */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: opacity 0.8s var(--ease), transform 0.8s var(--ease);
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ═══════════════════════════════════════════════
+           FLOATING WAVE TEXT
+           ═══════════════════════════════════════════════ */
+        .wave-text span {
+            display: inline-block;
+            animation: waveFloat 3s ease-in-out infinite;
+        }
+        @keyframes waveFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        /* ═══════════════════════════════════════════════
+           CONTAINER
+           ═══════════════════════════════════════════════ */
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 40px;
+        }
+
+        /* ═══════════════════════════════════════════════
+           NAVBAR — floating pill bar
+           ═══════════════════════════════════════════════ */
+        .navbar {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: auto;
+            max-width: 820px;
+        }
+        .nav-pill {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            background: #1a1a1a;
+            border-radius: 60px;
+            padding: 6px 6px 6px 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        /* Noise texture on navbar */
+        .nav-pill::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 60px;
+            opacity: 0.06;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 128px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        /* Subtle inner glow top edge */
+        .nav-pill::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 20%; right: 20%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .nav-logo {
+            width: 40px; height: 40px;
+            background: var(--white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-right: 8px;
+            position: relative;
+            z-index: 1;
+            transition: transform 0.3s var(--ease);
+        }
+        .nav-logo:hover { transform: scale(1.05); }
+        .nav-logo svg {
+            width: 20px; height: 20px;
+            fill: #111;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 0;
+            list-style: none;
+            position: relative;
+            z-index: 1;
+        }
+        .nav-links li {
+            perspective: 600px;
+        }
+        .nav-links a {
+            display: block;
+            padding: 10px 20px;
+            font-size: 0.88rem;
+            font-weight: 500;
+            color: var(--white);
+            letter-spacing: 0.01em;
+            position: relative;
+            transition: color 0.3s var(--ease);
+            transform-style: preserve-3d;
+        }
+        /* 3D cubic rotation on hover */
+        .nav-links a .nav-text {
+            display: block;
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-origin: center center;
+            backface-visibility: hidden;
+        }
+        .nav-links a:hover .nav-text {
+            animation: cubicRotate 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        @keyframes cubicRotate {
+            0% { transform: rotateX(0deg); }
+            50% { transform: rotateX(90deg); opacity: 0.4; }
+            51% { transform: rotateX(-90deg); opacity: 0.4; }
+            100% { transform: rotateX(0deg); opacity: 1; }
+        }
+        .nav-links a:hover {
+            color: var(--lime);
+        }
+
+        .nav-right {
+            margin-left: auto;
+            position: relative;
+            z-index: 1;
+        }
+        .nav-cta {
+            display: block;
+            padding: 12px 28px;
+            background: var(--white);
+            color: #111;
+            font-size: 0.82rem;
+            font-weight: 600;
+            border-radius: 50px;
+            border: none;
+            cursor: pointer;
+            letter-spacing: 0.02em;
+            transition: all 0.3s var(--ease);
+            white-space: nowrap;
+        }
+        .nav-cta:hover {
+            background: var(--lime);
+            color: #111;
+            box-shadow: 0 4px 20px var(--lime-glow);
+            transform: scale(1.03);
+        }
+
+        /* ═══════════════════════════════════════════════
+           HERO SECTION
+           ═══════════════════════════════════════════════ */
+        .hero {
+            padding: 140px 0 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            background: var(--lime);
+        }
+        /* Noise grain on hero */
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0.045;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 256px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .hero > .container { position: relative; z-index: 1; }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 16px;
+            background: rgba(0,0,0,0.08);
+            border: 1px solid rgba(0,0,0,0.12);
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #111;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-bottom: 24px;
+        }
+        .hero-badge .stars {
+            letter-spacing: 2px;
+        }
+        .hero h1 {
+            font-family: var(--display);
+            font-size: clamp(3.5rem, 8vw, 7.5rem);
+            line-height: 0.92;
+            letter-spacing: 0.02em;
+            color: #111;
+            margin-bottom: 24px;
+        }
+        .hero h1 .sparkle {
+            color: #111;
+            font-size: 0.5em;
+            vertical-align: super;
+        }
+        .hero-sub {
+            color: rgba(0,0,0,0.60);
+            font-size: 0.95rem;
+            max-width: 520px;
+            margin: 0 auto 36px;
+            line-height: 1.6;
+            font-weight: 400;
+        }
+        .hero-cta {
+            display: inline-block;
+            padding: 16px 40px;
+            background: #111;
+            color: var(--white);
+            font-size: 0.85rem;
+            font-weight: 700;
+            border-radius: 8px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            transition: all 0.3s var(--ease);
+            border: 2px solid #111;
+            cursor: pointer;
+            margin-bottom: 50px;
+        }
+        .hero-cta:hover {
+            background: #222;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+            transform: translateY(-2px);
+        }
+
+        /* Hero Screenshot */
+        .hero-screenshot {
+            max-width: 1000px;
+            margin: 0 auto;
+            border-radius: 16px 16px 0 0;
+            overflow: hidden;
+            box-shadow: 0 -10px 60px rgba(0,0,0,0.3);
+            border: 1px solid rgba(0,0,0,0.15);
+            border-bottom: none;
+            position: relative;
+        }
+        .hero-screenshot img {
+            width: 100%;
+            display: block;
+        }
+        .screenshot-placeholder {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: linear-gradient(135deg, #1a1a1a 0%, #222 50%, #1a1a1a 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .screenshot-placeholder::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(90deg, transparent 49.5%, rgba(202,255,0,0.03) 49.5%, rgba(202,255,0,0.03) 50.5%, transparent 50.5%),
+                linear-gradient(0deg, transparent 49.5%, rgba(202,255,0,0.03) 49.5%, rgba(202,255,0,0.03) 50.5%, transparent 50.5%);
+            background-size: 60px 60px;
+        }
+        .screenshot-ui {
+            position: relative;
+            z-index: 1;
+            width: 90%;
+            display: flex;
+            gap: 12px;
+            padding: 20px;
+        }
+        .screenshot-sidebar {
+            width: 180px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid rgba(255,255,255,0.05);
+            flex-shrink: 0;
+        }
+        .screenshot-sidebar-item {
+            padding: 8px 10px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+        .screenshot-sidebar-item.active-item {
+            background: rgba(202,255,0,0.08);
+            color: var(--lime);
+        }
+        .screenshot-main {
+            flex: 1;
+            background: rgba(255,255,255,0.02);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+        .screenshot-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 10px;
+        }
+        .screenshot-bar {
+            height: 4px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 2px;
+            margin-bottom: 8px;
+        }
+        .screenshot-bar-fill {
+            height: 100%;
+            width: 65%;
+            background: var(--lime);
+            border-radius: 2px;
+            opacity: 0.6;
+        }
+        .screenshot-dots {
+            display: flex;
+            gap: 6px;
+        }
+        .screenshot-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.08);
+        }
+        .screenshot-dot.lime { background: rgba(202,255,0,0.3); }
+
+        /* ═══════════════════════════════════════════════
+           SECONDS TIMER RULER (Looping)
+           ═══════════════════════════════════════════════ */
+        .timer-ruler {
+            width: 100%;
+            overflow: hidden;
+            background: var(--lime);
+            padding: 10px 0;
+            position: relative;
+        }
+        .timer-ruler-track {
+            display: flex;
+            animation: rulerScroll 20s linear infinite;
+            width: max-content;
+        }
+        .timer-ruler-segment {
+            display: flex;
+            align-items: flex-end;
+            gap: 0;
+            flex-shrink: 0;
+        }
+        .timer-tick-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 60px;
+        }
+        .timer-ticks {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            height: 16px;
+            align-items: flex-end;
+        }
+        .timer-tick {
+            width: 1px;
+            background: rgba(0,0,0,0.4);
+        }
+        .timer-tick.major { height: 14px; width: 1.5px; background: rgba(0,0,0,0.7); }
+        .timer-tick.minor { height: 8px; }
+        .timer-tick.micro { height: 5px; }
+        .timer-label {
+            font-family: var(--sans);
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: rgba(0,0,0,0.7);
+            margin-top: 3px;
+            letter-spacing: 0.04em;
+        }
+        @keyframes rulerScroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* ═══════════════════════════════════════════════
+           WHAT'S CLIPPER SECTION
+           ═══════════════════════════════════════════════ */
+        .whats-section {
+            padding: 120px 0;
+        }
+        .whats-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 24px;
+        }
+        .whats-heading {
+            font-family: var(--display);
+            font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+            line-height: 1.05;
+            letter-spacing: 0.01em;
+            color: var(--white);
+        }
+        .whats-heading .highlight {
+            display: inline-block;
+            background: var(--lime);
+            color: #111;
+            padding: 0 8px;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        .whats-heading .highlight img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.35;
+            mix-blend-mode: multiply;
+        }
+        .whats-heading .highlight span {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ═══════════════════════════════════════════════
+           FEATURES SECTION (Seamless Clipping)
+           ═══════════════════════════════════════════════ */
+        .features-section {
+            padding: 0 0 120px;
+        }
+        .features-header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+        .features-header h2 {
+            font-family: var(--display);
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            letter-spacing: 0.02em;
+            color: var(--white);
+            margin-bottom: 12px;
+        }
+        .features-header p {
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        .features-divider {
+            width: 100%;
+            height: 1px;
+            background: var(--border);
+            margin-bottom: 40px;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: all 0.35s var(--ease);
+        }
+        .feature-card:hover {
+            border-color: var(--border-hover);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+            transform: translateY(-3px);
+        }
+        .feature-card-img {
+            width: 100%;
+            height: 220px;
+            overflow: hidden;
+            background: #0d0d0d;
+        }
+        .feature-card-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s var(--ease);
+            opacity: 0.85;
+        }
+        .feature-card:hover .feature-card-img img {
+            transform: scale(1.05);
+        }
+        .feature-card-body {
+            padding: 24px;
+        }
+        .feature-card-label {
+            font-family: var(--display);
+            font-size: 0.9rem;
+            letter-spacing: 0.08em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .feature-card-title {
+            font-family: var(--display);
+            font-size: 1.8rem;
+            color: var(--white);
+            letter-spacing: 0.02em;
+            margin-bottom: 8px;
+        }
+        .feature-card-desc {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            font-weight: 400;
+        }
+        .feature-card-arrow {
+            display: inline-block;
+            color: var(--text-dim);
+            font-size: 1.1rem;
+            margin-top: 10px;
+            transition: all 0.3s var(--ease);
+        }
+        .feature-card:hover .feature-card-arrow {
+            color: var(--lime);
+            transform: translateX(4px);
+        }
+
+        /* ═══════════════════════════════════════════════
+           HIGH-PERFORMANCE SECTION
+           ═══════════════════════════════════════════════ */
+        .performance-section {
+            padding: 80px 0 100px;
+        }
+        .performance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 48px;
+            gap: 40px;
+        }
+        .performance-header h2 {
+            font-family: var(--display);
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            line-height: 1;
+            letter-spacing: 0.02em;
+            color: var(--white);
+            max-width: 500px;
+        }
+        .performance-header p {
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            line-height: 1.7;
+            max-width: 450px;
+        }
+        .performance-image {
+            width: 100%;
+            border-radius: var(--radius);
+            overflow: hidden;
+            border: 1px solid var(--border);
+            position: relative;
+        }
+        .performance-image img {
+            width: 100%;
+            display: block;
+            transition: transform 0.6s var(--ease);
+        }
+        .performance-image:hover img {
+            transform: scale(1.02);
+        }
+        /* Decorative overlay frame */
+        .performance-frame {
+            position: absolute;
+            top: 30px; left: 30px;
+            right: -15px; bottom: -15px;
+            border: 2px solid rgba(202,255,0,0.15);
+            border-radius: var(--radius);
+            pointer-events: none;
+        }
+
+        /* ═══════════════════════════════════════════════
+           TESTIMONIALS
+           ═══════════════════════════════════════════════ */
+        .testimonials-section {
+            padding: 100px 0;
+            background: var(--bg-card);
+        }
+        .testimonials-header {
+            text-align: center;
+            margin-bottom: 56px;
+        }
+        .testimonials-header h2 {
+            font-family: var(--display);
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            letter-spacing: 0.02em;
+            color: var(--white);
+        }
+        .testimonials-header h2 span {
+            display: block;
+            color: var(--text-dim);
+            font-size: 0.7em;
+        }
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        .testimonial-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            transition: all 0.4s var(--ease);
+            position: relative;
+            overflow: hidden;
+        }
+        .testimonial-card::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: var(--radius);
+            background: linear-gradient(135deg, rgba(202,255,0,0.15), transparent, rgba(202,255,0,0.08));
+            opacity: 0;
+            transition: opacity 0.4s var(--ease);
+            pointer-events: none;
+        }
+        .testimonial-card:hover {
+            border-color: rgba(202,255,0,0.25);
+            box-shadow: 0 0 40px var(--lime-glow), 0 16px 50px rgba(0,0,0,0.3);
+            transform: translateY(-4px);
+        }
+        .testimonial-card:hover::before { opacity: 1; }
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .testimonial-avatar {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid var(--border);
+            flex-shrink: 0;
+        }
+        .testimonial-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .testimonial-name {
+            font-weight: 600;
+            font-size: 0.88rem;
+            color: var(--white);
+        }
+        .testimonial-role {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-weight: 400;
+        }
+        .testimonial-text {
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            line-height: 1.7;
+            font-style: italic;
+            font-weight: 400;
+            position: relative;
+            z-index: 1;
+        }
+        .testimonial-text::before {
+            content: '\201C';
+            font-family: var(--display);
+            font-size: 3rem;
+            color: rgba(202,255,0,0.15);
+            position: absolute;
+            top: -15px;
+            left: -5px;
+            line-height: 1;
+        }
+
+        /* ═══════════════════════════════════════════════
+           DEMO / STATS SECTION
+           ═══════════════════════════════════════════════ */
+        .demo-section {
+            padding: 120px 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .demo-section::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 600px; height: 600px;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(202,255,0,0.04), transparent 70%);
+            pointer-events: none;
+        }
+        .demo-heading {
+            font-family: var(--display);
+            font-size: clamp(3rem, 6vw, 5.5rem);
+            letter-spacing: 0.02em;
+            color: var(--white);
+            margin-bottom: 12px;
+            position: relative;
+        }
+        .demo-heading .deco {
+            position: relative;
+        }
+        .demo-heading .deco::before,
+        .demo-heading .deco::after {
+            content: '~';
+            color: var(--lime);
+            font-size: 0.5em;
+            position: absolute;
+            top: -8px;
+        }
+        .demo-heading .deco::before { left: -24px; }
+        .demo-heading .deco::after { right: -24px; }
+        .demo-sub {
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            margin-bottom: 36px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+        .demo-cta {
+            display: inline-block;
+            padding: 16px 48px;
+            background: var(--lime);
+            color: #111;
+            font-size: 0.85rem;
+            font-weight: 700;
+            border-radius: 8px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            transition: all 0.3s var(--ease);
+            border: none;
+            cursor: pointer;
+            margin-bottom: 56px;
+        }
+        .demo-cta:hover {
+            background: var(--lime-dim);
+            box-shadow: 0 8px 30px var(--lime-glow-strong);
+            transform: translateY(-2px);
+        }
+        .stats-row {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 48px;
+        }
+        .stat-box {
+            width: 72px;
+            height: 88px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--display);
+            font-size: 2.5rem;
+            color: var(--white);
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-box::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--lime);
+            opacity: 0.3;
+        }
+        .demo-tools-label {
+            font-family: var(--display);
+            font-size: 1.2rem;
+            letter-spacing: 0.12em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+        .demo-tools-desc {
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            max-width: 550px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* ═══════════════════════════════════════════════
+           FAQ SECTION
+           ═══════════════════════════════════════════════ */
+        .faq-section {
+            padding: 80px 0 100px;
+        }
+        .faq-item {
+            border-bottom: 1px solid var(--border);
+            overflow: hidden;
+        }
+        .faq-question {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 22px 0;
+            background: none;
+            border: none;
+            color: var(--white);
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: var(--sans);
+            cursor: pointer;
+            text-align: left;
+            transition: color 0.25s var(--ease);
+        }
+        .faq-question:hover { color: var(--lime); }
+        .faq-icon {
+            font-size: 1.4rem;
+            color: var(--text-dim);
+            transition: transform 0.3s var(--ease), color 0.3s;
+            flex-shrink: 0;
+            margin-left: 20px;
+        }
+        .faq-item.open .faq-icon {
+            transform: rotate(45deg);
+            color: var(--lime);
+        }
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s var(--ease), padding 0.4s var(--ease);
+            padding: 0 0 0;
+        }
+        .faq-item.open .faq-answer {
+            max-height: 300px;
+            padding: 0 0 22px;
+        }
+        .faq-answer p {
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            line-height: 1.7;
+            font-weight: 400;
+        }
+
+        /* ═══════════════════════════════════════════════
+           FOOTER
+           ═══════════════════════════════════════════════ */
+        .footer {
+            background: var(--bg-card);
+            padding: 80px 0 40px;
+            border-top: 1px solid var(--border);
+        }
+        .footer-top {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+        .footer-about p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            line-height: 1.7;
+            font-weight: 400;
+        }
+        .footer-col h4 {
+            font-family: var(--sans);
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--white);
+            margin-bottom: 18px;
+        }
+        .footer-col ul {
+            list-style: none;
+        }
+        .footer-col li {
+            margin-bottom: 10px;
+        }
+        .footer-col a {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            font-weight: 400;
+            transition: color 0.25s;
+        }
+        .footer-col a:hover { color: var(--white); }
+        .footer-brand {
+            font-family: var(--display);
+            font-size: clamp(5rem, 15vw, 12rem);
+            color: var(--lime);
+            line-height: 0.85;
+            letter-spacing: -0.02em;
+            margin-bottom: 30px;
+        }
+        .footer-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+        .footer-copy {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            font-weight: 400;
+        }
+        .footer-socials {
+            display: flex;
+            gap: 16px;
+        }
+        .footer-social-icon {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            transition: all 0.3s var(--ease);
+            cursor: pointer;
+        }
+        .footer-social-icon:hover {
+            border-color: var(--lime);
+            color: var(--lime);
+            box-shadow: 0 0 16px var(--lime-glow);
+        }
+        .footer-privacy {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            transition: color 0.25s;
+        }
+        .footer-privacy:hover { color: var(--white); }
+
+        /* ═══════════════════════════════════════════════
+           RESPONSIVE
+           ═══════════════════════════════════════════════ */
+        @media (max-width: 1024px) {
+            .features-grid { grid-template-columns: 1fr; }
+            .performance-header { flex-direction: column; align-items: flex-start; }
+            .testimonials-grid { grid-template-columns: 1fr; max-width: 500px; margin: 0 auto; }
+            .footer-top { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+            .container { padding: 0 20px; }
+            .navbar { max-width: calc(100% - 24px); }
+            .nav-links { display: none; }
+            .nav-pill { padding: 6px 6px 6px 8px; }
+            .hero { padding: 120px 0 0; }
+            .stats-row { flex-wrap: wrap; }
+            .footer-top { grid-template-columns: 1fr; }
+            .footer-bottom { flex-direction: column; gap: 16px; text-align: center; }
+        }
+
+        /* ═══════════════════════════════════════════════
+           SELECTION
+           ═══════════════════════════════════════════════ */
+        ::selection {
+            background: var(--lime);
+            color: #111;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══ NAVBAR ═══ -->
+<nav class="navbar">
+    <div class="nav-pill">
+        <a href="/" class="nav-logo">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        </a>
+        <ul class="nav-links">
+            <li><a href="#features"><span class="nav-text">Features</span></a></li>
+            <li><a href="#performance"><span class="nav-text">How It Works</span></a></li>
+            <li><a href="#testimonials"><span class="nav-text">Reviews</span></a></li>
+            <li><a href="#faq"><span class="nav-text">FAQ</span></a></li>
+        </ul>
+        <div class="nav-right">
+            <a href="/app" class="nav-cta">Launch App</a>
+        </div>
+    </div>
+</nav>
+
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+    <div class="container">
+        <div class="reveal">
+            <div class="hero-badge"><span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span> AI-Powered Video Clipping</div>
+        </div>
+        <h1 class="reveal reveal-delay-1 wave-text">
+            <span style="animation-delay:0s">CLIP</span>
+            <span style="animation-delay:0.1s">LIKE</span>
+            <span style="animation-delay:0.2s">MAGIC</span><span class="sparkle" style="animation-delay:0.25s">+</span><br>
+            <span style="animation-delay:0.3s">EVERY</span>
+            <span style="animation-delay:0.4s">TIME</span>
+        </h1>
+        <p class="hero-sub reveal reveal-delay-2">
+            An AI video clipping tool with powerful analysis, transcript-based splitting,
+            and smart hooks to create scroll-stopping short-form content.
+        </p>
+        <a href="/app" class="hero-cta reveal reveal-delay-3">Launch App Now</a>
+    </div>
+
+    <!-- App Screenshot Mock -->
+    <div class="container">
+        <div class="hero-screenshot reveal reveal-delay-4">
+            <div class="screenshot-placeholder">
+                <div class="screenshot-ui">
+                    <div class="screenshot-sidebar">
+                        <div class="screenshot-sidebar-item active-item">Video Library</div>
+                        <div class="screenshot-sidebar-item">Smart Clips</div>
+                        <div class="screenshot-sidebar-item">Manual Split</div>
+                        <div class="screenshot-sidebar-item">Sequential Reels</div>
+                        <div class="screenshot-sidebar-item">Training</div>
+                        <div class="screenshot-sidebar-item">Settings</div>
+                    </div>
+                    <div class="screenshot-main">
+                        <div class="screenshot-card">
+                            <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:8px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">Processing Pipeline</div>
+                            <div class="screenshot-bar"><div class="screenshot-bar-fill"></div></div>
+                            <div class="screenshot-dots">
+                                <div class="screenshot-dot lime"></div>
+                                <div class="screenshot-dot lime"></div>
+                                <div class="screenshot-dot lime"></div>
+                                <div class="screenshot-dot"></div>
+                            </div>
+                        </div>
+                        <div class="screenshot-card">
+                            <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:6px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">Generated Clips</div>
+                            <div style="display:flex;gap:8px;">
+                                <div style="flex:1;height:60px;background:rgba(202,255,0,0.05);border-radius:4px;border:1px solid rgba(202,255,0,0.1);"></div>
+                                <div style="flex:1;height:60px;background:rgba(202,255,0,0.05);border-radius:4px;border:1px solid rgba(202,255,0,0.1);"></div>
+                                <div style="flex:1;height:60px;background:rgba(202,255,0,0.05);border-radius:4px;border:1px solid rgba(202,255,0,0.1);"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ═══ SECONDS TIMER RULER ═══ -->
+<div class="timer-ruler">
+    <div class="timer-ruler-track" id="ruler-track"></div>
+</div>
+
+
+<!-- ═══ WHAT'S CLIPPER ═══ -->
+<section class="whats-section">
+    <div class="container">
+        <div class="whats-label reveal">WHAT'S CLIPPER</div>
+        <h2 class="whats-heading reveal reveal-delay-1">
+            UPLOAD, ANALYZE,
+            <span class="highlight"><span>SPLIT</span></span>
+            AND SHARE STUNNING
+            <span class="highlight"><span>SHORT-FORM</span></span>
+            CLIPS EASILY USING OUR INTUITIVE, AI
+            <span class="highlight"><span>POWERED</span></span>
+            GRADE CLIPPING PLATFORM.
+        </h2>
+    </div>
+</section>
+
+
+<!-- ═══ FEATURES (Seamless Clipping) ═══ -->
+<section class="features-section" id="features">
+    <div class="container">
+        <div class="features-header reveal">
+            <h2>SEAMLESS CLIPPING</h2>
+            <p>Split videos effortlessly with AI-driven hook detection, smart boundary
+               adjustment, and vertical format fit. Built for shorts, reels, and TikToks.</p>
+        </div>
+        <div class="features-divider"></div>
+        <div class="features-grid">
+            <div class="feature-card reveal">
+                <div class="feature-card-img">
+                    <img src="https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&h=400&fit=crop&q=80" alt="Smart Clips" loading="lazy">
+                </div>
+                <div class="feature-card-body">
+                    <div class="feature-card-label">AI Analysis</div>
+                    <div class="feature-card-title">SMART CLIPS</div>
+                    <div class="feature-card-desc">Whisper transcribes, NLP scores hooks, and FFmpeg splits. Upload once, get viral-ready clips automatically with 9:16 blurred backgrounds.</div>
+                    <span class="feature-card-arrow">&rarr;</span>
+                </div>
+            </div>
+            <div class="feature-card reveal reveal-delay-1">
+                <div class="feature-card-img">
+                    <img src="https://images.unsplash.com/photo-1536240478700-b869070f9279?w=600&h=400&fit=crop&q=80" alt="Manual Split" loading="lazy">
+                </div>
+                <div class="feature-card-body">
+                    <div class="feature-card-label">Precision Control</div>
+                    <div class="feature-card-title">MANUAL SPLIT</div>
+                    <div class="feature-card-desc">Enter exact start/end timestamps to extract specific portions. Supports multiple formats including MM:SS, seconds, and human-readable inputs.</div>
+                    <span class="feature-card-arrow">&rarr;</span>
+                </div>
+            </div>
+            <div class="feature-card reveal">
+                <div class="feature-card-img">
+                    <img src="https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600&h=400&fit=crop&q=80" alt="Sequential Reels" loading="lazy">
+                </div>
+                <div class="feature-card-body">
+                    <div class="feature-card-label">Full Coverage</div>
+                    <div class="feature-card-title">SEQUENTIAL REELS</div>
+                    <div class="feature-card-desc">Split the entire video into consecutive 50-60s reels. Every frame covered, nothing skipped. Optional sentence-boundary splitting for cleaner cuts.</div>
+                    <span class="feature-card-arrow">&rarr;</span>
+                </div>
+            </div>
+            <div class="feature-card reveal reveal-delay-1">
+                <div class="feature-card-img">
+                    <img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&h=400&fit=crop&q=80" alt="Training Studio" loading="lazy">
+                </div>
+                <div class="feature-card-body">
+                    <div class="feature-card-label">Machine Learning</div>
+                    <div class="feature-card-title">TRAINING STUDIO</div>
+                    <div class="feature-card-desc">Upload your best long-form + short-form pairs. The system extracts your clipping patterns and personalizes future analysis to your unique style.</div>
+                    <span class="feature-card-arrow">&rarr;</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ═══ HIGH-PERFORMANCE ═══ -->
+<section class="performance-section" id="performance">
+    <div class="container">
+        <div class="performance-header reveal">
+            <h2>HIGH-PERFORMANCE<br>CLIPPING SUITE</h2>
+            <p>Built on FFmpeg with hardware-accelerated encoding, Whisper-powered transcription, multi-LLM analysis via Groq, Gemini, and NVIDIA, and a persistent video library for seamless re-processing.</p>
+        </div>
+        <div class="performance-image reveal reveal-delay-1" style="position:relative">
+            <img src="https://images.unsplash.com/photo-1535016120720-40c646be5580?w=1200&h=600&fit=crop&q=80" alt="Video editing suite" loading="lazy">
+            <div class="performance-frame"></div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ═══ TESTIMONIALS ═══ -->
+<section class="testimonials-section" id="testimonials">
+    <div class="container">
+        <div class="testimonials-header reveal">
+            <h2>CLIPPER<br><span>USER SAYS</span></h2>
+        </div>
+        <div class="testimonials-grid">
+            <div class="testimonial-card reveal">
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">
+                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&q=80" alt="User" loading="lazy">
+                    </div>
+                    <div>
+                        <div class="testimonial-name">OMAR MARTINEZ</div>
+                        <div class="testimonial-role">YouTube Creator</div>
+                    </div>
+                </div>
+                <div class="testimonial-text">Saved me hours of manual editing. The smart clip detection finds hooks I would have missed. My shorts engagement went up 3x since switching to Clipper.</div>
+            </div>
+            <div class="testimonial-card reveal reveal-delay-1">
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">
+                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&q=80" alt="User" loading="lazy">
+                    </div>
+                    <div>
+                        <div class="testimonial-name">JESSICA DELANEY</div>
+                        <div class="testimonial-role">Podcast Producer</div>
+                    </div>
+                </div>
+                <div class="testimonial-text">The sequential reels feature is a game changer for repurposing hour-long podcast episodes. One upload, and I get 50+ clips ready for TikTok.</div>
+            </div>
+            <div class="testimonial-card reveal reveal-delay-2">
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">
+                        <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&q=80" alt="User" loading="lazy">
+                    </div>
+                    <div>
+                        <div class="testimonial-name">JAKE THOMPSON</div>
+                        <div class="testimonial-role">Social Media Editor</div>
+                    </div>
+                </div>
+                <div class="testimonial-text">The training studio learned my editing style within a few examples. Now the AI suggests clips that match exactly what my audience wants to see.</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ═══ DEMO / STATS ═══ -->
+<section class="demo-section" id="demo">
+    <div class="container">
+        <div class="demo-heading reveal">
+            <span class="deco">DEMO CLIPPER</span>
+        </div>
+        <p class="demo-sub reveal reveal-delay-1">Experience the full AI clipping pipeline. Upload, analyze, split. Powerful tools at your fingertips.</p>
+        <a href="/app" class="demo-cta reveal reveal-delay-2">Launch App</a>
+        <div class="stats-row reveal reveal-delay-3">
+            <div class="stat-box">1</div>
+            <div class="stat-box">0</div>
+            <div class="stat-box">K</div>
+            <div class="stat-box">+</div>
+            <div class="stat-box" style="margin-left:20px">C</div>
+            <div class="stat-box">L</div>
+            <div class="stat-box">I</div>
+            <div class="stat-box">P</div>
+            <div class="stat-box">S</div>
+        </div>
+        <div class="demo-tools-label reveal">ADVANCED CLIPPING TOOLS</div>
+        <p class="demo-tools-desc reveal reveal-delay-1">FFmpeg splitting, Whisper transcription, NLP hook detection, multi-LLM analysis, 9:16 vertical fit with blurred backgrounds, and a persistent video library.</p>
+    </div>
+</section>
+
+
+<!-- ═══ FAQ ═══ -->
+<section class="faq-section" id="faq">
+    <div class="container">
+        <div class="faq-item reveal">
+            <button class="faq-question" onclick="toggleFaq(this)">
+                Is Clipper free to use?
+                <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+                <p>Clipper is a free, self-hosted tool. You'll need Python, FFmpeg, and optionally API keys for Groq, Gemini, or NVIDIA for enhanced LLM-based analysis. The core NLP engine works without any API keys.</p>
+            </div>
+        </div>
+        <div class="faq-item reveal reveal-delay-1">
+            <button class="faq-question" onclick="toggleFaq(this)">
+                Does Clipper support all video formats?
+                <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+                <p>Yes. Clipper supports MP4, AVI, MOV, MKV, WebM, FLV, WMV, and M4V. You can also paste YouTube URLs and the built-in downloader will fetch the video automatically using yt-dlp.</p>
+            </div>
+        </div>
+        <div class="faq-item reveal reveal-delay-2">
+            <button class="faq-question" onclick="toggleFaq(this)">
+                How does the AI analysis work?
+                <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+                <p>Clipper uses OpenAI Whisper for transcription, then runs NLP-based hook detection (question hooks, emotional triggers, story openers, controversy markers, and more) to score and rank clip-worthy segments. Optionally, LLMs can provide a second-pass analysis.</p>
+            </div>
+        </div>
+        <div class="faq-item reveal reveal-delay-3">
+            <button class="faq-question" onclick="toggleFaq(this)">
+                Can I use Clipper offline?
+                <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+                <p>The core pipeline (transcription + NLP analysis + splitting) runs entirely locally with no internet required. LLM fallback analysis needs API access, but it's optional.</p>
+            </div>
+        </div>
+        <div class="faq-item reveal reveal-delay-4">
+            <button class="faq-question" onclick="toggleFaq(this)">
+                What is the Training Studio?
+                <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+                <p>Upload your best long-form videos alongside the short clips you made from them. Clipper extracts patterns (preferred durations, hook types, pacing) and personalizes all future analysis to match your unique editing style.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ═══ FOOTER ═══ -->
+<footer class="footer">
+    <div class="container">
+        <div class="footer-top">
+            <div class="footer-about">
+                <p>Split videos effortlessly with AI-powered analysis, smart hook detection, and professional-grade encoding tailored for creators, podcasters, and content teams.</p>
+            </div>
+            <div class="footer-col">
+                <h4>Product</h4>
+                <ul>
+                    <li><a href="/app">Launch App</a></li>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#faq">FAQ</a></li>
+                    <li><a href="#performance">How It Works</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Clip Modes</h4>
+                <ul>
+                    <li><a href="/app">Smart Clips</a></li>
+                    <li><a href="/app">Manual Split</a></li>
+                    <li><a href="/app">Sequential Reels</a></li>
+                    <li><a href="/app">Training Studio</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Resources</h4>
+                <ul>
+                    <li><a href="#faq">Documentation</a></li>
+                    <li><a href="#faq">API Keys Setup</a></li>
+                    <li><a href="#performance">System Requirements</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-brand">CLIPPER.</div>
+
+        <div class="footer-bottom">
+            <span class="footer-copy">CLIPPER &copy; 2025. ALL RIGHTS RESERVED</span>
+            <div class="footer-socials">
+                <div class="footer-social-icon" title="Instagram">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5"/></svg>
+                </div>
+                <div class="footer-social-icon" title="Facebook">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/></svg>
+                </div>
+                <div class="footer-social-icon" title="LinkedIn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-4 0v7h-4v-7a6 6 0 016-6zM2 9h4v12H2zM4 6a2 2 0 100-4 2 2 0 000 4z"/></svg>
+                </div>
+                <div class="footer-social-icon" title="X/Twitter">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                </div>
+                <div class="footer-social-icon" title="YouTube">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                </div>
+            </div>
+            <a href="#" class="footer-privacy">PRIVACY POLICY</a>
+        </div>
+    </div>
+</footer>
+
+
+<script>
+/* ═══ Scroll Reveal ═══ */
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+        }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+/* ═══ Seconds Timer Ruler ═══ */
+function buildRuler() {
+    const track = document.getElementById('ruler-track');
+    const totalSeconds = 32; // two loops of 16s
+    let html = '';
+    for (let s = 0; s <= totalSeconds; s++) {
+        html += `<div class="timer-tick-group">
+            <div class="timer-ticks">
+                <div class="timer-tick major"></div>
+                <div class="timer-tick micro"></div>
+                <div class="timer-tick micro"></div>
+                <div class="timer-tick minor"></div>
+                <div class="timer-tick micro"></div>
+                <div class="timer-tick micro"></div>
+            </div>
+            <div class="timer-label">${s % 16}S</div>
+        </div>`;
+    }
+    track.innerHTML = html;
+}
+buildRuler();
+
+/* ═══ FAQ Toggle ═══ */
+function toggleFaq(btn) {
+    const item = btn.parentElement;
+    const isOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+    if (!isOpen) item.classList.add('open');
+}
+
+/* ═══ Navbar shadow on scroll ═══ */
+window.addEventListener('scroll', () => {
+    const pill = document.querySelector('.nav-pill');
+    if (window.scrollY > 50) {
+        pill.style.boxShadow = '0 12px 40px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3)';
+    } else {
+        pill.style.boxShadow = '0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2)';
+    }
+});
+
+/* ═══ Wave text stagger ═══ */
+document.querySelectorAll('.wave-text span').forEach((span, i) => {
+    span.style.animationDelay = `${i * 0.15}s`;
+});
+</script>
+
+</body>
+</html>

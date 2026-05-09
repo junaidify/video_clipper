@@ -32,6 +32,8 @@ from library import VideoLibrary
 from manual_clipper import TimestampClip, parse_timestamp, split_by_timestamps
 from sequential_clipper import SequentialConfig, split_sequentially
 from trainer import PatternTrainer
+from subtitle_generator import generate_subtitles, burn_subtitles, burn_text_overlay
+from thumbnail_generator import generate_template_thumbnail, generate_ai_thumbnail, pick_best_frame
 
 # ─── App Setup ───
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -63,6 +65,38 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+import re
+import datetime
+
+def _sanitize_folder_name(title: str) -> str:
+    """Create filesystem-safe folder name from video title."""
+    safe = re.sub(r'[^\w\s-]', '', title)
+    safe = re.sub(r'\s+', '_', safe.strip())
+    return safe[:50] if len(safe) > 50 else (safe or "video")
+
+
+def _make_clip_output_dir(video_title: str, job_id: str) -> str:
+    """
+    Build output dir: clips_output/{VideoTitle_timestamp}/{job_id}/
+    The parent folder groups all sessions for the same source video.
+    """
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    parent_name = f"{_sanitize_folder_name(video_title)}_{ts}"
+    # Check if a folder for this video already exists (match by title prefix)
+    clips_root = app.config['CLIPS_FOLDER']
+    prefix = _sanitize_folder_name(video_title)
+    existing_parent = None
+    if os.path.isdir(clips_root):
+        for d in os.listdir(clips_root):
+            if d.startswith(prefix) and os.path.isdir(os.path.join(clips_root, d)):
+                existing_parent = d
+                break
+    parent = existing_parent or parent_name
+    job_dir = os.path.join(clips_root, parent, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    return job_dir
+
+
 def _get_video_duration(video_path: str) -> float:
     """Get video duration via ffprobe."""
     try:
@@ -82,8 +116,19 @@ def _get_video_duration(video_path: str) -> float:
 # ═══════════════════════════════════════════════════
 
 @app.route('/')
-def index():
-    return render_template('index.html')
+def landing():
+    return render_template('landing.html')
+
+
+@app.route('/app')
+def app_ui():
+    return render_template('app.html')
+
+
+@app.route('/editor')
+def editor_page():
+    """Dedicated clip editor page for post-processing a single clip."""
+    return render_template('editor.html')
 
 
 # ═══════════════════════════════════════════════════
@@ -192,8 +237,7 @@ def smart_clip():
     }
 
     job_id = str(uuid.uuid4())[:8]
-    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
-    os.makedirs(job_dir, exist_ok=True)
+    job_dir = _make_clip_output_dir(entry.title, job_id)
 
     jobs[job_id] = {
         'status': 'transcribing',
@@ -341,8 +385,7 @@ def manual_split():
         return jsonify({'error': f'Invalid timestamp: {e}'}), 400
 
     job_id = str(uuid.uuid4())[:8]
-    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
-    os.makedirs(job_dir, exist_ok=True)
+    job_dir = _make_clip_output_dir(entry.title, job_id)
 
     results = split_by_timestamps(
         video_path=entry.file_path,
@@ -381,8 +424,7 @@ def sequential_split():
     use_transcript = request.form.get('use_transcript', 'false') == 'true'
 
     job_id = str(uuid.uuid4())[:8]
-    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
-    os.makedirs(job_dir, exist_ok=True)
+    job_dir = _make_clip_output_dir(entry.title, job_id)
 
     jobs[job_id] = {
         'status': 'processing',
@@ -566,11 +608,222 @@ def job_status(job_id):
     return jsonify(jobs[job_id])
 
 
+def _find_job_dir(job_id: str) -> str:
+    """Find the actual directory for a job_id, searching nested structure."""
+    clips_root = app.config['CLIPS_FOLDER']
+    # Direct path (legacy: clips_output/job_id/)
+    direct = os.path.join(clips_root, job_id)
+    if os.path.isdir(direct):
+        return direct
+    # Nested path (new: clips_output/parent_folder/job_id/)
+    if os.path.isdir(clips_root):
+        for parent in os.listdir(clips_root):
+            nested = os.path.join(clips_root, parent, job_id)
+            if os.path.isdir(nested):
+                return nested
+    return direct  # fallback
+
+
 @app.route('/clips/<job_id>/<filename>')
 def serve_clip(job_id, filename):
     """Serve a generated clip file."""
-    clip_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
+    clip_dir = _find_job_dir(job_id)
     return send_from_directory(clip_dir, filename)
+
+
+@app.route('/api/clips/list/<job_id>')
+def list_clips_in_dir(job_id):
+    """List all clip files in a job/clips directory."""
+    clip_dir = _find_job_dir(job_id)
+    if not os.path.isdir(clip_dir):
+        return jsonify({'files': [], 'error': 'Directory not found'})
+    files = []
+    for f in sorted(os.listdir(clip_dir)):
+        if f.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+            fpath = os.path.join(clip_dir, f)
+            size_mb = round(os.path.getsize(fpath) / (1024 * 1024), 2)
+            files.append({
+                'filename': f,
+                'url': f'/clips/{job_id}/{f}',
+                'size_mb': size_mb,
+            })
+    return jsonify({'files': files, 'job_id': job_id})
+
+
+# ═══════════════════════════════════════════════════
+#  SUBTITLE, OVERLAY, THUMBNAIL ROUTES
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/clips/subtitle', methods=['POST'])
+def add_subtitles():
+    """Generate and burn subtitles into a clip."""
+    data = request.get_json()
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    model_size = data.get('model_size', 'base')
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_path = os.path.join(_find_job_dir(job_id), filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    try:
+        # Generate subtitles
+        result = generate_subtitles(clip_path, model_size=model_size)
+
+        # Build output filename
+        stem = Path(filename).stem
+        ext = Path(filename).suffix
+        out_name = f"{stem}_subtitled{ext}"
+        out_path = os.path.join(_find_job_dir(job_id), out_name)
+
+        # Burn into video
+        burn_subtitles(clip_path, result['srt'], out_path)
+
+        # Save SRT file alongside
+        srt_name = f"{stem}.srt"
+        srt_path = os.path.join(_find_job_dir(job_id), srt_name)
+        with open(srt_path, 'w', encoding='utf-8') as f:
+            f.write(result['srt'])
+
+        return jsonify({
+            'success': True,
+            'method': result['method'],
+            'subtitled_url': f'/clips/{job_id}/{out_name}',
+            'srt_url': f'/clips/{job_id}/{srt_name}',
+            'word_count': len(result['words']),
+        })
+    except Exception as e:
+        logger.exception("Subtitle generation failed")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clips/overlay', methods=['POST'])
+def add_text_overlay():
+    """Burn text overlay onto a clip at specific positions with per-word colors."""
+    data = request.get_json()
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    text_blocks = data.get('text_blocks', [])
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+    if not text_blocks:
+        return jsonify({'error': 'text_blocks required'}), 400
+
+    clip_path = os.path.join(_find_job_dir(job_id), filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    try:
+        stem = Path(filename).stem
+        ext = Path(filename).suffix
+        out_name = f"{stem}_overlay{ext}"
+        out_path = os.path.join(_find_job_dir(job_id), out_name)
+
+        burn_text_overlay(clip_path, out_path, text_blocks)
+
+        return jsonify({
+            'success': True,
+            'overlay_url': f'/clips/{job_id}/{out_name}',
+        })
+    except Exception as e:
+        logger.exception("Text overlay failed")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clips/frame', methods=['POST'])
+def get_clip_frame():
+    """Extract a single frame from a clip for the overlay editor preview."""
+    data = request.get_json()
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    timestamp = data.get('timestamp', 0.5)  # seconds into clip
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_path = os.path.join(_find_job_dir(job_id), filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    try:
+        import tempfile, base64
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            frame_path = tmp.name
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(timestamp),
+            "-i", clip_path,
+            "-vframes", "1",
+            "-q:v", "2",
+            frame_path
+        ]
+        subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', check=True)
+
+        with open(frame_path, "rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode()
+        os.unlink(frame_path)
+
+        # Get video dimensions
+        cmd2 = [
+            "ffprobe", "-v", "quiet",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "json", clip_path
+        ]
+        result = subprocess.run(cmd2, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        dims = json.loads(result.stdout)["streams"][0]
+
+        return jsonify({
+            'success': True,
+            'frame': f'data:image/png;base64,{img_b64}',
+            'width': dims['width'],
+            'height': dims['height'],
+        })
+    except Exception as e:
+        logger.exception("Frame extraction failed")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clips/thumbnail', methods=['POST'])
+def generate_thumbnail():
+    """Generate a thumbnail for a clip. Supports 'template' and 'ai' modes."""
+    data = request.get_json()
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    title = data.get('title', 'Untitled')
+    mode = data.get('mode', 'template')  # 'template' or 'ai'
+    style = data.get('style', 'bold')
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_path = os.path.join(_find_job_dir(job_id), filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    try:
+        stem = Path(filename).stem
+        thumb_name = f"{stem}_thumb_{mode}.png"
+        thumb_path = os.path.join(_find_job_dir(job_id), thumb_name)
+
+        if mode == 'ai':
+            generate_ai_thumbnail(clip_path, title, thumb_path, context="")
+        else:
+            generate_template_thumbnail(clip_path, title, thumb_path, style=style)
+
+        return jsonify({
+            'success': True,
+            'thumbnail_url': f'/clips/{job_id}/{thumb_name}',
+            'mode': mode,
+        })
+    except Exception as e:
+        logger.exception(f"Thumbnail generation ({mode}) failed")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/check-url', methods=['POST'])
