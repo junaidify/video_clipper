@@ -256,6 +256,26 @@
         .result-link svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
         .result-link .rl-label { flex: 1; }
 
+        /* ═══ Frame Picker ═══ */
+        .fp-thumb {
+            cursor: pointer;
+            border-radius: 6px;
+            border: 2px solid transparent;
+            overflow: hidden;
+            position: relative;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .fp-thumb:hover { border-color: rgba(202,255,0,0.3); }
+        .fp-thumb.selected { border-color: var(--lime); box-shadow: 0 0 0 2px rgba(202,255,0,0.2); }
+        .fp-thumb img { width: 100%; display: block; aspect-ratio: 9/16; object-fit: cover; }
+        .fp-thumb .fp-ts {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.7);
+            font-size: 0.68rem; color: var(--text-dim);
+            padding: 3px 6px; text-align: center;
+            font-family: var(--mono);
+        }
+
         /* ═══ Overlay Canvas ═══ */
         .ov-canvas {
             position: relative;
@@ -317,7 +337,7 @@
 <body>
 
 <div class="topbar">
-    <a href="/app" class="topbar-back">
+    <a href="javascript:void(0)" class="topbar-back" onclick="history.back()">
         <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
         Back
     </a>
@@ -361,16 +381,25 @@
                 <div class="ts-icon"><svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></div>
                 <h3>TEXT OVERLAY</h3>
             </div>
-            <p class="tool-desc">Add a headline with per-word colors. Drag to position on the frame.</p>
+            <p class="tool-desc">Pick a frame, add a headline with per-word colors, drag to position.</p>
+
+            <!-- Frame picker grid -->
+            <div id="frame-picker" style="margin-bottom:14px">
+                <label>SELECT A FRAME</label>
+                <div id="frame-picker-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
+                    <div style="grid-column:1/-1;color:var(--text-ghost);font-size:0.82rem;text-align:center;padding:30px 0">
+                        Loading frames...
+                    </div>
+                </div>
+            </div>
 
             <div class="ov-canvas" id="ov-canvas"
                  onmousedown="ovMouseDown(event)"
                  onmousemove="ovMouseMove(event)"
                  onmouseup="ovMouseUp(event)">
                 <img id="ov-frame" src="" alt="Frame preview" style="display:none">
-                <div style="color:var(--text-ghost);font-size:0.82rem;text-align:center;padding:60px 20px" id="ov-placeholder">Click "Load Frame" to preview</div>
+                <div style="color:var(--text-ghost);font-size:0.82rem;text-align:center;padding:60px 20px" id="ov-placeholder">Select a frame above to start</div>
             </div>
-            <button class="btn btn-secondary" onclick="loadFrame()" style="margin-bottom:14px;font-size:0.82rem;padding:10px">Load Frame Preview</button>
 
             <div style="margin-bottom:14px">
                 <label>HEADLINE TEXT</label>
@@ -499,12 +528,55 @@ async function runSubtitles() {
 // ═══ TEXT OVERLAY ═══
 let ovState = { x: 0.5, y: 0.4, words: [], dragging: false, frameW: 0, frameH: 0 };
 
-async function loadFrame() {
+// Load frame picker thumbnails on page load
+let allFrames = [];
+
+async function loadFramePicker() {
+    const grid = document.getElementById('frame-picker-grid');
+    try {
+        const res = await fetch('/api/clips/frames', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: jobId, filename: filename, num_frames: 8 })
+        });
+        const data = await res.json();
+        if (!data.success || !data.frames?.length) {
+            grid.innerHTML = '<div style="grid-column:1/-1;color:var(--text-ghost);font-size:0.82rem;text-align:center;padding:20px">No frames extracted</div>';
+            return;
+        }
+        allFrames = data.frames;
+        ovState.frameW = data.width;
+        ovState.frameH = data.height;
+
+        grid.innerHTML = data.frames.map((f, i) => {
+            const mm = String(Math.floor(f.timestamp / 60)).padStart(2, '0');
+            const ss = String(Math.floor(f.timestamp % 60)).padStart(2, '0');
+            return `<div class="fp-thumb" onclick="selectFrame(${i})" id="fp-${i}">
+                <img src="${f.thumb}" alt="Frame at ${mm}:${ss}">
+                <div class="fp-ts">${mm}:${ss}</div>
+            </div>`;
+        }).join('');
+
+        // Auto-select first frame
+        selectFrame(0);
+    } catch(e) {
+        console.error(e);
+        grid.innerHTML = '<div style="grid-column:1/-1;color:var(--red);font-size:0.82rem;text-align:center;padding:20px">Failed to load frames</div>';
+    }
+}
+
+async function selectFrame(idx) {
+    // Highlight selected
+    document.querySelectorAll('.fp-thumb').forEach(el => el.classList.remove('selected'));
+    document.getElementById(`fp-${idx}`)?.classList.add('selected');
+
+    // Load full-res frame at that timestamp
+    const ts = allFrames[idx]?.timestamp || 0.5;
     try {
         const res = await fetch('/api/clips/frame', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ job_id: jobId, filename: filename, timestamp: 0.5 })
+            body: JSON.stringify({ job_id: jobId, filename: filename, timestamp: ts })
         });
         const data = await res.json();
         if (data.success) {
@@ -514,9 +586,13 @@ async function loadFrame() {
             document.getElementById('ov-placeholder').style.display = 'none';
             ovState.frameW = data.width;
             ovState.frameH = data.height;
+            ovState.selectedTs = ts;
         }
     } catch(e) { console.error(e); }
 }
+
+// Load frames on page ready
+loadFramePicker();
 
 function updateOvText() {
     const text = document.getElementById('ov-text').value;

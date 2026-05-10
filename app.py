@@ -789,6 +789,76 @@ def get_clip_frame():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/clips/frames', methods=['POST'])
+def get_clip_frames():
+    """Extract multiple frames from a clip for the overlay editor frame picker."""
+    data = request.get_json()
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    num_frames = min(data.get('num_frames', 8), 16)
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_path = os.path.join(_find_job_dir(job_id), filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    try:
+        import base64 as b64mod
+        # Get duration
+        probe_cmd = [
+            "ffprobe", "-v", "quiet",
+            "-show_entries", "format=duration",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "json", clip_path
+        ]
+        probe_res = subprocess.run(probe_cmd, capture_output=True, text=True,
+                                   encoding='utf-8', errors='replace')
+        probe_data = json.loads(probe_res.stdout)
+        duration = float(probe_data["format"]["duration"])
+        dims = probe_data["streams"][0]
+        w, h = int(dims["width"]), int(dims["height"])
+
+        frames = []
+        interval = duration / (num_frames + 1)
+        for i in range(1, num_frames + 1):
+            ts = interval * i
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                frame_path = tmp.name
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(ts),
+                "-i", clip_path,
+                "-vframes", "1",
+                "-vf", "scale=320:-1",
+                "-q:v", "4",
+                frame_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace')
+            if result.returncode == 0 and os.path.exists(frame_path) and os.path.getsize(frame_path) > 0:
+                with open(frame_path, "rb") as f:
+                    img_b64 = b64mod.b64encode(f.read()).decode()
+                frames.append({
+                    'timestamp': round(ts, 2),
+                    'thumb': f'data:image/jpeg;base64,{img_b64}',
+                })
+            if os.path.exists(frame_path):
+                os.unlink(frame_path)
+
+        return jsonify({
+            'success': True,
+            'frames': frames,
+            'width': w,
+            'height': h,
+            'duration': duration,
+        })
+    except Exception as e:
+        logger.exception("Multi-frame extraction failed")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/clips/thumbnail', methods=['POST'])
 def generate_thumbnail():
     """Generate a thumbnail for a clip. Supports 'template' and 'ai' modes."""

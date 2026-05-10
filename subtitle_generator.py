@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import platform
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -16,25 +17,68 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-def _get_font_path() -> str:
-    """Get a valid bold font path for the current OS."""
+def _ffmpeg_font_setup() -> dict:
+    """
+    Set up a portable font for FFmpeg drawtext on Windows.
+    Copies a system font to a temp dir so we can reference it without C: colon.
+    Returns dict with 'env' (subprocess env) and 'font_param' (filter string).
+    """
+    setup_dir = os.path.join(tempfile.gettempdir(), "ffmpeg_fonts")
+    os.makedirs(setup_dir, exist_ok=True)
+
+    env = os.environ.copy()
+
     if platform.system() == "Windows":
-        candidates = [
-            "C:/Windows/Fonts/arialbd.ttf",
-            "C:/Windows/Fonts/arial.ttf",
-            "C:/Windows/Fonts/segoeui.ttf",
-            "C:/Windows/Fonts/calibri.ttf",
-        ]
+        # 1. Create valid fontconfig config with forward slashes
+        fc_conf = os.path.join(setup_dir, "fonts.conf")
+        fonts_dir_fwd = "C:/Windows/Fonts"
+        cache_dir_fwd = setup_dir.replace("\\", "/")
+        if not os.path.isfile(fc_conf):
+            with open(fc_conf, "w", encoding="utf-8") as f:
+                f.write(
+                    '<?xml version="1.0"?>\n'
+                    '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+                    '<fontconfig>\n'
+                    f'  <dir>{fonts_dir_fwd}</dir>\n'
+                    f'  <cachedir>{cache_dir_fwd}</cachedir>\n'
+                    '</fontconfig>\n'
+                )
+        env["FONTCONFIG_FILE"] = fc_conf
+        env["FONTCONFIG_PATH"] = setup_dir
+
+        # 2. Copy a font file to the temp dir so we can use a colon-free path
+        font_dst = os.path.join(setup_dir, "font.ttf")
+        if not os.path.isfile(font_dst):
+            for src in [
+                "C:/Windows/Fonts/arialbd.ttf",
+                "C:/Windows/Fonts/arial.ttf",
+                "C:/Windows/Fonts/segoeui.ttf",
+                "C:/Windows/Fonts/calibri.ttf",
+            ]:
+                if os.path.isfile(src):
+                    shutil.copy2(src, font_dst)
+                    break
+
+        if os.path.isfile(font_dst):
+            # Use the copied font — path has no colon issues in filter syntax
+            # The font is in the cwd we'll set for subprocess, so just use filename
+            font_param = f"fontfile=font.ttf"
+        else:
+            font_param = "font=Arial"
     else:
-        candidates = [
+        # Linux — direct path, no colon issues
+        for p in [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-        ]
-    for p in candidates:
-        if os.path.isfile(p):
-            return p.replace("\\", "/")
-    return ""  # let FFmpeg try its built-in default
+        ]:
+            if os.path.isfile(p):
+                font_param = f"fontfile={p}"
+                break
+        else:
+            font_param = "font=Arial"
+
+    return {"env": env, "font_param": font_param, "cwd": setup_dir}
 
 
 def _get_video_duration(video_path: str) -> float:
@@ -304,8 +348,9 @@ def burn_subtitles(video_path: str, srt_content: str, output_path: str,
         else:
             alignment = 2  # bottom-center (default)
 
-        # Escape path for FFmpeg filter (Windows backslashes)
+        # Escape SRT path — forward slashes, escape colons for filter syntax
         srt_escaped = srt_path.replace('\\', '/').replace(':', '\\:')
+        font_setup = _ffmpeg_font_setup()
 
         # Build subtitle filter with styling
         sub_filter = (
@@ -333,12 +378,16 @@ def burn_subtitles(video_path: str, srt_content: str, output_path: str,
         ]
 
         logger.info(f"Burning subtitles into video: {output_path}")
+        logger.info(f"Subtitle filter: {sub_filter}")
         result = subprocess.run(
-            cmd, capture_output=True, encoding='utf-8', errors='replace'
+            cmd, capture_output=True, encoding='utf-8', errors='replace',
+            env=font_setup["env"],
+            cwd=font_setup["cwd"],
         )
         if result.returncode != 0:
-            logger.error(f"FFmpeg subtitle burn failed: {result.stderr}")
-            raise RuntimeError(f"FFmpeg error: {result.stderr[-500:]}")
+            logger.error(f"FFmpeg subtitle burn FULL stderr:\n{result.stderr}")
+            raise RuntimeError(f"FFmpeg subtitle burn failed (code {result.returncode}). "
+                               f"Check server logs for full stderr.")
 
         logger.info(f"Subtitled video saved: {output_path}")
         return output_path
@@ -351,6 +400,7 @@ def burn_text_overlay(video_path: str, output_path: str,
                       text_blocks: list) -> str:
     """
     Burn text overlays onto video at specific positions with per-word colors.
+    Uses -filter_script to avoid all Windows command-line escaping issues.
 
     Args:
         video_path: Input video
@@ -374,8 +424,14 @@ def burn_text_overlay(video_path: str, output_path: str,
     output_path = str(Path(output_path).resolve())
 
     w, h = _get_video_dimensions(video_path)
-    font_path = _get_font_path()
-    font_param = f"fontfile='{font_path.replace(chr(92), '/').replace(':', chr(92)+':')}'" if font_path else "font=Arial"
+    font_setup = _ffmpeg_font_setup()
+    font_param = font_setup["font_param"]
+
+    def _esc(txt: str) -> str:
+        """Escape text for FFmpeg drawtext — backslash-escape special chars."""
+        for ch in ("\\", "'", ":", ";", "[", "]", ","):
+            txt = txt.replace(ch, "\\" + ch)
+        return txt
 
     # Build drawtext filters for each word in each block
     filters = []
@@ -386,27 +442,24 @@ def burn_text_overlay(video_path: str, output_path: str,
         word_specs = block.get("words", [])
 
         if not word_specs:
-            # Single-color text
             text = block.get("text", "")
             color = block.get("color", "white")
             px = int(bx * w)
             py = int(by * h)
-            escaped = text.replace("'", "\\'").replace(":", "\\:")
+            escaped = _esc(text)
             filters.append(
                 f"drawtext=text='{escaped}':"
                 f"x={px}-(text_w/2):y={py}-(text_h/2):"
-                f"fontsize={font_size}:fontcolor={color}:"
+                f"fontsize={font_size}:fontcolor='{color}':"
                 f"borderw=3:bordercolor=black:"
                 f"{font_param}"
             )
         else:
-            # Per-word coloring: lay out words horizontally
             full_text = " ".join(ws["word"] for ws in word_specs)
             total_chars = len(full_text)
             px_start = int(bx * w)
             py = int(by * h)
 
-            # Approximate char width
             char_w = font_size * 0.55
             total_w = total_chars * char_w
             start_x = px_start - total_w / 2
@@ -416,15 +469,15 @@ def burn_text_overlay(video_path: str, output_path: str,
                 word = ws["word"]
                 color = ws.get("color", "white")
                 wx = int(start_x + offset * char_w)
-                escaped = word.replace("'", "\\'").replace(":", "\\:")
+                escaped = _esc(word)
                 filters.append(
                     f"drawtext=text='{escaped}':"
                     f"x={wx}:y={py}-(text_h/2):"
-                    f"fontsize={font_size}:fontcolor={color}:"
+                    f"fontsize={font_size}:fontcolor='{color}':"
                     f"borderw=3:bordercolor=black:"
                     f"{font_param}"
                 )
-                offset += len(word) + 1  # +1 for space
+                offset += len(word) + 1
 
     if not filters:
         raise ValueError("No text overlays provided")
@@ -443,10 +496,20 @@ def burn_text_overlay(video_path: str, output_path: str,
     ]
 
     logger.info(f"Burning text overlay: {len(filters)} drawtext filters")
-    result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace')
+    logger.info(f"VF filter: {vf}")
+    logger.info(f"Font param: {font_param}, cwd: {font_setup['cwd']}")
+    logger.info(f"Full cmd: {cmd}")
+    result = subprocess.run(
+        cmd, capture_output=True, encoding='utf-8', errors='replace',
+        env=font_setup["env"],
+        cwd=font_setup["cwd"],   # run FFmpeg from the font dir so fontfile=font.ttf resolves
+    )
+
     if result.returncode != 0:
-        logger.error(f"FFmpeg overlay failed: {result.stderr}")
-        raise RuntimeError(f"FFmpeg error: {result.stderr[-500:]}")
+        logger.error(f"FFmpeg overlay FULL stderr:\n{result.stderr}")
+        logger.error(f"FFmpeg overlay FULL stdout:\n{result.stdout}")
+        raise RuntimeError(f"FFmpeg overlay failed (code {result.returncode}). "
+                           f"Check server logs for full stderr.")
 
     logger.info(f"Overlay video saved: {output_path}")
     return output_path
