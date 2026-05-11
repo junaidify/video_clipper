@@ -897,59 +897,112 @@
         .empty-state .icon { font-size: 2.5rem; margin-bottom: 14px; opacity: 0.2; }
         .empty-state p { font-size: 0.9rem; font-weight: 400; }
 
-        /* ═══ Output Cards ═══ */
-        .output-video-group { margin-bottom: 32px; }
-        .output-video-header {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 18px;
-            padding-bottom: 14px;
-            border-bottom: 1px solid var(--border);
+        /* ═══ Folder Grid ═══ */
+        .folder-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 18px;
         }
-        .output-video-header .ovh-icon {
-            width: 40px; height: 40px;
+        .folder-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 24px 20px 20px;
+            cursor: pointer;
+            transition: all 0.35s var(--ease);
+            position: relative;
+            text-align: center;
+        }
+        .folder-card::after {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, rgba(202,255,0,0.1), transparent 40%, transparent 60%, rgba(202,255,0,0.06));
+            opacity: 0;
+            transition: opacity 0.4s var(--ease);
+            pointer-events: none;
+        }
+        .folder-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-4px);
+            box-shadow: 0 0 30px var(--lime-glow), 0 12px 40px rgba(0,0,0,0.3);
+        }
+        .folder-card:hover::after { opacity: 1; }
+        .folder-card .fc-icon {
+            width: 56px; height: 56px;
+            margin: 0 auto 14px;
             background: var(--lime-subtle);
             border: 1px solid rgba(202,255,0,0.12);
-            border-radius: 10px;
+            border-radius: 14px;
             display: flex; align-items: center; justify-content: center;
-            flex-shrink: 0;
         }
-        .output-video-header .ovh-icon svg {
-            width: 18px; height: 18px;
+        .folder-card .fc-icon svg {
+            width: 26px; height: 26px;
             stroke: var(--lime);
             fill: none;
-            stroke-width: 1.8;
+            stroke-width: 1.6;
             stroke-linecap: round;
             stroke-linejoin: round;
         }
-        .output-video-header .ovh-title {
+        .folder-card .fc-title {
             font-family: var(--display);
-            font-size: 1.3rem;
+            font-size: 0.88rem;
+            color: var(--white);
+            letter-spacing: 0.03em;
+            margin-bottom: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .folder-card .fc-meta {
+            font-size: 0.74rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
+        /* ═══ Folder Open View (clips inside) ═══ */
+        .folder-open-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 22px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .folder-open-back {
+            width: 36px; height: 36px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s var(--ease);
+            flex-shrink: 0;
+        }
+        .folder-open-back:hover {
+            border-color: var(--lime);
+            background: var(--lime-subtle);
+        }
+        .folder-open-back svg {
+            width: 16px; height: 16px;
+            stroke: var(--text); fill: none;
+            stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .folder-open-title {
+            font-family: var(--display);
+            font-size: 1.2rem;
             color: var(--white);
             letter-spacing: 0.04em;
             flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        .output-video-header .ovh-meta {
+        .folder-open-count {
+            font-size: 0.78rem;
             color: var(--text-dim);
-            font-size: 0.82rem;
         }
-        .output-session {
-            margin-bottom: 20px;
-        }
-        .output-session-label {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--text-dim);
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            margin-bottom: 12px;
-            font-family: var(--display);
-        }
-        .output-session-label .tag { font-family: var(--sans); }
+        /* ═══ Output Clip Cards ═══ */
         .output-clips-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1563,7 +1616,7 @@
             <div class="panel-hero reveal">
                 <div class="panel-badge"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Browse</div>
                 <div class="panel-title">OUTPUT BROWSER</div>
-                <div class="panel-desc">Browse all generated clips organized by video and session.</div>
+                <div class="panel-desc">Browse all generated clips organized by video folders.</div>
             </div>
             <div id="output-list"></div>
             <div class="empty-state" id="output-empty">
@@ -1701,11 +1754,17 @@ function switchPanel(name, pushHistory = true) {
     document.querySelector(`.tab-item[data-panel="${name}"]`)?.classList.add('active');
     const panel = document.getElementById(`panel-${name}`);
     panel.classList.add('active');
-    // Re-trigger reveals
-    panel.querySelectorAll('.reveal').forEach(el => {
+    // Re-trigger reveal animations: remove visible, then re-add after reflow
+    // IntersectionObserver won't re-fire for already-visible elements, so we
+    // force the animation with a micro-delay instead.
+    const reveals = panel.querySelectorAll('.reveal');
+    reveals.forEach(el => {
         el.classList.remove('visible');
-        void el.offsetWidth;
-        revealObserver.observe(el);
+    });
+    // Force reflow then add visible back with stagger
+    void panel.offsetWidth;
+    requestAnimationFrame(() => {
+        reveals.forEach(el => el.classList.add('visible'));
     });
     if (['smart','manual','sequential'].includes(name)) refreshVideoSelects();
     if (name === 'output') loadOutputs();
@@ -2062,6 +2121,9 @@ async function loadSettings() {
     } catch(e) {}
 }
 
+// ═══ Output Browser: Folder Grid ═══
+let _outputFolders = []; // cached folder data
+
 async function loadOutputs() {
     try {
         const res = await fetch('/api/library/list');
@@ -2071,72 +2133,113 @@ async function loadOutputs() {
         const videos = (data.videos||[]).filter(v => v.clips_directories?.length);
         if (!videos.length) { empty.style.display = 'block'; list.innerHTML = ''; return; }
         empty.style.display = 'none';
-        list.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px 0">Loading clips...</div>';
+        list.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px 0">Scanning folders...</div>';
 
-        let html = '';
+        // Build folder list: one folder per video, aggregating all sessions
+        _outputFolders = [];
         for (const v of videos) {
-            let sessionsHtml = '';
-            for (let i = 0; i < v.clips_directories.length; i++) {
-                const dirPath = v.clips_directories[i];
-                // Extract job_id (last folder name) from the full path
+            let totalClips = 0;
+            const jobIds = [];
+            for (const dirPath of v.clips_directories) {
                 const jobId = dirPath.replace(/\\/g, '/').split('/').filter(Boolean).pop();
                 try {
                     const clipRes = await fetch(`/api/clips/list/${jobId}`);
                     const clipData = await clipRes.json();
-                    const files = clipData.files || [];
-                    if (!files.length) continue;
-
-                    const clipsHtml = files.map(f => `
-                        <div class="output-clip-card">
-                            <video controls preload="metadata"><source src="${f.url}" type="video/mp4"></video>
-                            <div class="occ-info">
-                                <span class="occ-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</span>
-                                <span class="occ-size">${f.size_mb} MB</span>
-                                <a class="occ-dl" href="${f.url}" download="${escHtml(f.filename)}" title="Download"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
-                            </div>
-                            <div style="padding:0 14px 14px;display:flex;gap:6px;flex-wrap:wrap">
-                                <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
-                                    <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="14" x2="23" y2="14"/></svg>
-                                    Subtitles
-                                </button>
-                                <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
-                                    <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-                                    Text
-                                </button>
-                                <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
-                                    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                    Thumb
-                                </button>
-                            </div>
-                        </div>
-                    `).join('');
-
-                    sessionsHtml += `
-                        <div class="output-session">
-                            <div class="output-session-label">Session ${i + 1} <span class="tag tag-lime">${files.length} clip${files.length !== 1 ? 's' : ''}</span></div>
-                            <div class="output-clips-grid">${clipsHtml}</div>
-                        </div>
-                    `;
-                } catch(e) { /* skip broken dirs */ }
+                    const count = (clipData.files || []).length;
+                    if (count > 0) {
+                        jobIds.push(jobId);
+                        totalClips += count;
+                    }
+                } catch(e) {}
             }
-
-            if (!sessionsHtml) continue;
-
-            html += `
-                <div class="output-video-group">
-                    <div class="output-video-header">
-                        <div class="ovh-icon"><svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>
-                        <div class="ovh-title">${escHtml(v.title).toUpperCase()}</div>
-                        <div class="ovh-meta">${formatDuration(v.duration)} &middot; ${v.clips_directories.length} session(s)</div>
-                    </div>
-                    ${sessionsHtml}
-                </div>
-            `;
+            if (totalClips > 0) {
+                _outputFolders.push({
+                    title: v.title,
+                    duration: v.duration,
+                    sessions: jobIds.length,
+                    totalClips,
+                    jobIds,
+                });
+            }
         }
 
-        if (!html) { empty.style.display = 'block'; list.innerHTML = ''; }
-        else { list.innerHTML = html; }
+        if (!_outputFolders.length) { empty.style.display = 'block'; list.innerHTML = ''; return; }
+        renderFolderGrid();
     } catch(e) { console.error('loadOutputs error:', e); }
+}
+
+function renderFolderGrid() {
+    const list = document.getElementById('output-list');
+    const cards = _outputFolders.map((f, idx) => `
+        <div class="folder-card" onclick="openFolder(${idx})">
+            <div class="fc-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+            <div class="fc-title" title="${escHtml(f.title)}">${escHtml(f.title)}</div>
+            <div class="fc-meta">${f.totalClips} clip${f.totalClips!==1?'s':''} &middot; ${f.sessions} session${f.sessions!==1?'s':''}<br>${formatDuration(f.duration)}</div>
+        </div>
+    `).join('');
+    list.innerHTML = `<div class="folder-grid">${cards}</div>`;
+}
+
+async function openFolder(idx) {
+    const folder = _outputFolders[idx];
+    if (!folder) return;
+    const list = document.getElementById('output-list');
+    list.innerHTML = `
+        <div class="folder-open-header">
+            <div class="folder-open-back" onclick="renderFolderGrid()" title="Back to folders">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+            </div>
+            <div class="folder-open-title">${escHtml(folder.title)}</div>
+            <div class="folder-open-count">${folder.totalClips} clip${folder.totalClips!==1?'s':''}</div>
+        </div>
+        <div style="text-align:center;color:var(--text-dim);padding:30px 0">Loading clips...</div>
+    `;
+
+    let clipsHtml = '';
+    for (const jobId of folder.jobIds) {
+        try {
+            const clipRes = await fetch(`/api/clips/list/${jobId}`);
+            const clipData = await clipRes.json();
+            const files = clipData.files || [];
+            for (const f of files) {
+                clipsHtml += `
+                    <div class="output-clip-card">
+                        <video controls preload="metadata"><source src="${f.url}" type="video/mp4"></video>
+                        <div class="occ-info">
+                            <span class="occ-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</span>
+                            <span class="occ-size">${f.size_mb} MB</span>
+                            <a class="occ-dl" href="${f.url}" download="${escHtml(f.filename)}" title="Download"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
+                        </div>
+                        <div style="padding:0 14px 14px;display:flex;gap:6px;flex-wrap:wrap">
+                            <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
+                                <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="14" x2="23" y2="14"/></svg>
+                                Subtitles
+                            </button>
+                            <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
+                                <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+                                Text
+                            </button>
+                            <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
+                                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                Thumb
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch(e) {}
+    }
+
+    list.innerHTML = `
+        <div class="folder-open-header">
+            <div class="folder-open-back" onclick="renderFolderGrid()" title="Back to folders">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+            </div>
+            <div class="folder-open-title">${escHtml(folder.title)}</div>
+            <div class="folder-open-count">${folder.totalClips} clip${folder.totalClips!==1?'s':''}</div>
+        </div>
+        <div class="output-clips-grid">${clipsHtml || '<div style="text-align:center;color:var(--text-dim);padding:30px;grid-column:1/-1">No clips found.</div>'}</div>
+    `;
 }
 
 // Helpers
