@@ -1,0 +1,29 @@
+# Data dirs (rebuilt at runtime)
+uploads/
+clips_output/
+video_library/
+training_sessions/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Misc
+*.md
+*.log
+graphify-out/

@@ -3,6 +3,7 @@ openai-whisper>=20231117
 flask>=3.0
 python-dotenv>=1.0
 yt-dlp>=2024.0
+gunicorn>=22.0
 
 # LLM Fallback (optional — install only what you need)
 groq>=0.9

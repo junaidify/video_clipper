@@ -1,7 +1,28 @@
-.env
-.venv/
+# ── Data (runtime, not committed) ──
 uploads/
-clips_output/   
-static/
-__pycache__/
+clips_output/
 video_library/
+training_sessions/
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ── Environment ──
+.env
+
+# ── IDE / OS ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ── Generated / Tool Artifacts ──
+graphify-out/
+design_philosophy.md
+CLAUDE.md
