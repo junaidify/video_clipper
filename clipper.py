@@ -257,18 +257,19 @@ class VideoClipper:
                 )
                 cmd.extend(["-af", audio_fade])
 
-            # Encoding settings (optimized for social media)
+            # Encoding settings (optimized for speed + social media)
             cmd.extend([
                 "-c:v", "libx264",
-                "-preset", "medium",
+                "-preset", "veryfast",       # ~3x faster than 'medium', negligible quality loss for social
                 "-crf", str(self.config.video_quality),
                 "-profile:v", "high",
                 "-level", "4.0",
                 "-pix_fmt", "yuv420p",       # max compatibility
+                "-threads", "0",             # use all available CPU cores
                 "-c:a", "aac",
                 "-b:a", "128k",
                 "-ar", "44100",
-                "-movflags", "+faststart",    # web-optimized
+                "-movflags", "+faststart",   # web-optimized
                 output_path
             ])
 

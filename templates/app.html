@@ -1404,7 +1404,7 @@
             <div class="panel-hero reveal">
                 <div class="panel-badge"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Source</div>
                 <div class="panel-title">VIDEO LIBRARY</div>
-                <div class="panel-desc">Upload a video or paste a URL. Videos are stored for reuse across all clip modes.</div>
+                <div class="panel-desc">Upload a video or paste a URL from 1800+ platforms. Videos are stored for reuse across all clip modes.</div>
             </div>
 
             <div class="two-col reveal reveal-d1">
@@ -1416,8 +1416,11 @@
                     </div>
                     <div id="lib-input-url">
                         <div class="url-group">
-                            <input type="text" id="lib-url" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
+                            <input type="text" id="lib-url" placeholder="Paste any video URL — YouTube, TikTok, Instagram, X, Vimeo, Reddit..." autocomplete="off">
                             <button class="btn btn-primary btn-sm" onclick="addVideoFromUrl()">Add</button>
+                        </div>
+                        <div style="margin-top:8px;font-size:0.7rem;color:var(--text-ghost);line-height:1.5">
+                            Supports 1800+ platforms via yt-dlp &middot; YouTube &middot; TikTok &middot; Instagram &middot; X/Twitter &middot; Facebook &middot; Vimeo &middot; Reddit &middot; Twitch &middot; and more
                         </div>
                     </div>
                     <div id="lib-input-file" style="display:none">

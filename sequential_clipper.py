@@ -220,7 +220,7 @@ def split_sequentially(video_path: str, output_dir: str,
             cmd.extend(["-map", "[vout]", "-map", "0:a?"])
 
         cmd.extend([
-            "-c:v", "libx264", "-preset", "medium",
+            "-c:v", "libx264", "-preset", "veryfast", "-threads", "0",
             "-crf", str(config.video_quality),
             "-profile:v", "high", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
