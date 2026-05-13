@@ -13,6 +13,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# ─── Whisper Model Cache ───
+# Loading the model takes 5-15 seconds. Cache it globally so subsequent
+# transcriptions reuse the already-loaded model instantly.
+_whisper_cache = {"model": None, "size": None, "device": None}
+
 
 @dataclass
 class TranscriptSegment:
@@ -128,9 +133,18 @@ def transcribe(video_path: str, model_size: str = "base",
     try:
         extract_audio(video_path, audio_path)
 
-        # Load Whisper model
-        logger.info(f"Loading Whisper model: {model_size}")
-        model = whisper.load_model(model_size, device=device)
+        # Load Whisper model (cached — first load takes 5-15s, subsequent calls are instant)
+        if (_whisper_cache["model"] is not None
+                and _whisper_cache["size"] == model_size
+                and _whisper_cache["device"] == device):
+            logger.info(f"Reusing cached Whisper model: {model_size}")
+            model = _whisper_cache["model"]
+        else:
+            logger.info(f"Loading Whisper model: {model_size} (first load, will be cached)")
+            model = whisper.load_model(model_size, device=device)
+            _whisper_cache["model"] = model
+            _whisper_cache["size"] = model_size
+            _whisper_cache["device"] = device
 
         # Transcribe with word-level timestamps
         logger.info("Transcribing audio (this may take a while)...")

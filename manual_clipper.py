@@ -145,7 +145,7 @@ def split_by_timestamps(video_path: str, clips: list,
                 logger.warning(f"Could not set up vertical filter: {e}")
 
         cmd.extend([
-            "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+            "-c:v", "libx264", "-preset", "veryfast", "-threads", "0", "-crf", "23",
             "-profile:v", "high", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
             "-movflags", "+faststart",

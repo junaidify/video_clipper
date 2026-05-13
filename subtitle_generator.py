@@ -372,7 +372,8 @@ def burn_subtitles(video_path: str, srt_content: str, output_path: str,
             "-vf", sub_filter,
             "-c:a", "copy",
             "-c:v", "libx264",
-            "-preset", "fast",
+            "-preset", "veryfast",
+            "-threads", "0",
             "-crf", "23",
             output_path
         ]

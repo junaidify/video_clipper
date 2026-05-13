@@ -26,7 +26,7 @@ from config import PipelineConfig, TranscriberConfig, AnalyzerConfig, ClipperCon
 from transcriber import transcribe
 from analyzer import ContentAnalyzer, ClipCandidate
 from clipper import VideoClipper
-from downloader import is_valid_url, download_video, get_video_info
+from downloader import is_valid_url, is_drm_platform, download_video, get_video_info, get_supported_platforms
 from llm_analyzer import analyze_with_llm, LLMConfig
 from library import VideoLibrary
 from manual_clipper import TimestampClip, parse_timestamp, split_by_timestamps
@@ -152,7 +152,10 @@ def library_add():
     url = request.form.get('url', '').strip()
     if url:
         if not is_valid_url(url):
-            return jsonify({'error': 'Invalid or unsupported URL'}), 400
+            return jsonify({'error': 'Invalid URL. Please enter a valid HTTP/HTTPS link.'}), 400
+        drm = is_drm_platform(url)
+        if drm:
+            return jsonify({'error': f'{drm} uses DRM protection and cannot be downloaded. This applies to all streaming services like Netflix, Disney+, Hulu, etc.'}), 400
         try:
             os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
             dl_result = download_video(url, app.config['UPLOAD_FOLDER'])
@@ -902,12 +905,21 @@ def check_url():
     data = request.get_json()
     url = data.get('url', '').strip()
     if not url or not is_valid_url(url):
-        return jsonify({'valid': False, 'error': 'Invalid or unsupported URL'})
+        return jsonify({'valid': False, 'error': 'Invalid URL. Enter a valid HTTP/HTTPS link.'})
+    drm = is_drm_platform(url)
+    if drm:
+        return jsonify({'valid': False, 'error': f'{drm} uses DRM protection and cannot be downloaded.'})
     try:
         info = get_video_info(url)
         return jsonify({'valid': True, 'info': info})
     except Exception as e:
         return jsonify({'valid': False, 'error': str(e)})
+
+
+@app.route('/api/platforms', methods=['GET'])
+def list_platforms():
+    """Return supported platform info for the UI."""
+    return jsonify(get_supported_platforms())
 
 
 @app.route('/api/settings', methods=['GET'])
@@ -973,4 +985,16 @@ if __name__ == '__main__':
 +==================================================+
     """)
 
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    if debug:
+        # Dev mode: Flask's built-in server with hot reload
+        app.run(host='0.0.0.0', port=port, debug=True)
+    else:
+        # Production: Waitress (cross-platform, Windows + Linux)
+        try:
+            from waitress import serve
+            print(f"  [Waitress] Serving on http://0.0.0.0:{port}")
+            serve(app, host='0.0.0.0', port=port, threads=8,
+                  channel_timeout=300, recv_bytes=65536)
+        except ImportError:
+            logger.warning("Waitress not installed, falling back to Flask dev server")
+            app.run(host='0.0.0.0', port=port, debug=False)
