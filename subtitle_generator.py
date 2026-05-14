@@ -224,10 +224,11 @@ Example: [{"word": "Hello world", "start": 0.0, "end": 0.8}, ...]"""
             os.unlink(audio_path)
 
 
-def words_to_srt(words: list, max_words_per_line: int = 6, max_duration: float = 4.0) -> str:
+def words_to_srt(words: list, max_words_per_line: int = 6,
+                  max_chars_per_line: int = 40, max_duration: float = 4.0) -> str:
     """
     Convert word-level timestamps to SRT subtitle format.
-    Groups words into subtitle lines.
+    Groups words into subtitle lines with word count AND character limits.
     """
     if not words:
         return ""
@@ -239,19 +240,27 @@ def words_to_srt(words: list, max_words_per_line: int = 6, max_duration: float =
     for w in words:
         if current_start is None:
             current_start = w["start"]
-        current_words.append(w["word"])
 
-        # Check if we should break the line
+        # Check if adding this word would exceed character limit
+        test_line = " ".join(current_words + [w["word"]])
         elapsed = w["end"] - current_start
-        if len(current_words) >= max_words_per_line or elapsed >= max_duration:
+
+        if current_words and (
+            len(current_words) >= max_words_per_line
+            or len(test_line) > max_chars_per_line
+            or elapsed >= max_duration
+        ):
+            # Flush current line first
             subtitles.append({
                 "index": len(subtitles) + 1,
                 "start": current_start,
-                "end": w["end"],
+                "end": w["start"],
                 "text": " ".join(current_words),
             })
-            current_words = []
-            current_start = None
+            current_words = [w["word"]]
+            current_start = w["start"]
+        else:
+            current_words.append(w["word"])
 
     # Remaining words
     if current_words:
@@ -336,23 +345,48 @@ def burn_subtitles(video_path: str, srt_content: str, output_path: str,
     try:
         # Get video dimensions for auto font size
         w, h = _get_video_dimensions(video_path)
+        is_vertical = h > w  # 9:16 portrait video (shorts/reels)
+
         if font_size <= 0:
-            font_size = max(16, int(h * 0.045))
+            if is_vertical:
+                # Vertical 9:16 video: ~4% of width → ~43px on 1080w
+                # Standard TikTok/Shorts subtitle size — readable without overwhelming
+                font_size = max(20, int(w * 0.04))
+            else:
+                # Landscape: ~3.5% of height
+                font_size = max(18, int(h * 0.035))
 
         # Position mapping
-        margin_v = int(h * 0.06)
+        margin_l = int(w * 0.05)  # horizontal padding so text doesn't touch edges
+        margin_r = margin_l
+
         if position == "top":
             alignment = 8  # ASS alignment: top-center
+            margin_v = int(h * 0.05)
         elif position == "center":
             alignment = 5  # center
+            margin_v = 0
         else:
             alignment = 2  # bottom-center (default)
+            if is_vertical:
+                # Place subtitles in the BLUR ZONE below the video content.
+                # For landscape source (16:9) in 9:16 frame:
+                #   content height ≈ w * 9/16 ≈ 608px on 1080w
+                #   content sits centered, bottom edge ≈ (h + content_h) / 2
+                #   blur zone below = h - bottom_edge ≈ h * 0.34
+                # MarginV = distance from bottom edge of frame.
+                # ~18% of height → ~346px from bottom → lands in center of blur zone
+                margin_v = int(h * 0.18)
+            else:
+                margin_v = int(h * 0.05)
 
         # Escape SRT path — forward slashes, escape colons for filter syntax
         srt_escaped = srt_path.replace('\\', '/').replace(':', '\\:')
         font_setup = _ffmpeg_font_setup()
 
         # Build subtitle filter with styling
+        # WrapStyle=1 = end-of-line word wrap (prevents overflow on narrow videos)
+        # PlayResX/PlayResY tell ASS the virtual canvas size for proper scaling
         sub_filter = (
             f"subtitles='{srt_escaped}':"
             f"force_style='FontSize={font_size},"
@@ -363,6 +397,11 @@ def burn_subtitles(video_path: str, srt_content: str, output_path: str,
             f"Shadow=1,"
             f"Alignment={alignment},"
             f"MarginV={margin_v},"
+            f"MarginL={margin_l},"
+            f"MarginR={margin_r},"
+            f"WrapStyle=1,"
+            f"PlayResX={w},"
+            f"PlayResY={h},"
             f"FontName=Arial'"
         )
 

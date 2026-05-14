@@ -409,8 +409,8 @@
         }
         .timer-ruler-track {
             display: flex;
-            animation: rulerScroll 20s linear infinite;
             width: max-content;
+            /* animation set dynamically by JS to match exact segment width */
         }
         .timer-ruler-segment {
             display: flex;
@@ -446,10 +446,7 @@
             margin-top: 3px;
             letter-spacing: 0.04em;
         }
-        @keyframes rulerScroll {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); }
-        }
+        /* rulerScroll keyframes injected by JS for pixel-perfect looping */
 
         /* ═══════════════════════════════════════════════
            WHAT'S CLIPPER SECTION
@@ -1410,25 +1407,48 @@ const observer = new IntersectionObserver((entries) => {
 
 document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
-/* ═══ Seconds Timer Ruler ═══ */
+/* ═══ Seconds Timer Ruler (pixel-perfect infinite loop) ═══ */
 function buildRuler() {
     const track = document.getElementById('ruler-track');
-    const totalSeconds = 32; // two loops of 16s
-    let html = '';
-    for (let s = 0; s <= totalSeconds; s++) {
-        html += `<div class="timer-tick-group">
-            <div class="timer-ticks">
-                <div class="timer-tick major"></div>
-                <div class="timer-tick micro"></div>
-                <div class="timer-tick micro"></div>
-                <div class="timer-tick minor"></div>
-                <div class="timer-tick micro"></div>
-                <div class="timer-tick micro"></div>
-            </div>
-            <div class="timer-label">${s % 16}S</div>
-        </div>`;
+    const tickWidth = 60; // matches .timer-tick-group width in CSS
+    const loopSeconds = 16;
+    const oneLoopPx = loopSeconds * tickWidth;
+
+    // Build one full loop of ticks
+    function buildSegment() {
+        let html = '';
+        for (let s = 0; s < loopSeconds; s++) {
+            html += `<div class="timer-tick-group">
+                <div class="timer-ticks">
+                    <div class="timer-tick major"></div>
+                    <div class="timer-tick micro"></div>
+                    <div class="timer-tick micro"></div>
+                    <div class="timer-tick minor"></div>
+                    <div class="timer-tick micro"></div>
+                    <div class="timer-tick micro"></div>
+                </div>
+                <div class="timer-label">${s}S</div>
+            </div>`;
+        }
+        return html;
     }
-    track.innerHTML = html;
+
+    // Need enough copies so the track is at least 2x screen width
+    const screenW = window.innerWidth;
+    const copies = Math.ceil((screenW * 2) / oneLoopPx) + 1;
+    const segment = buildSegment();
+    track.innerHTML = segment.repeat(copies);
+
+    // Inject keyframes that scroll exactly one loop's pixel width
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes rulerScroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-${oneLoopPx}px); }
+        }
+    `;
+    document.head.appendChild(style);
+    track.style.animation = 'rulerScroll 12s linear infinite';
 }
 buildRuler();
 
