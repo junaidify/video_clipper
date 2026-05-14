@@ -26,7 +26,9 @@ from config import PipelineConfig, TranscriberConfig, AnalyzerConfig, ClipperCon
 from transcriber import transcribe
 from analyzer import ContentAnalyzer, ClipCandidate
 from clipper import VideoClipper
-from downloader import is_valid_url, is_drm_platform, download_video, get_video_info, get_supported_platforms
+from downloader import (is_valid_url, is_drm_platform, download_video,
+                        get_video_info, get_supported_platforms,
+                        _get_cookies_config, _is_running_locally, _detect_browser)
 from llm_analyzer import analyze_with_llm, LLMConfig
 from library import VideoLibrary
 from manual_clipper import TimestampClip, parse_timestamp, split_by_timestamps
@@ -927,12 +929,23 @@ def get_settings():
     """Return API key status and dependency checks."""
     import shutil
     config = LLMConfig.from_env()
+    cookies_config = _get_cookies_config()
+    if 'cookiesfrombrowser' in cookies_config:
+        cookie_status = f"auto ({cookies_config['cookiesfrombrowser']})"
+    elif 'cookiefile' in cookies_config:
+        cookie_status = "cookie file"
+    else:
+        cookie_status = "none"
+
     return jsonify({
         'groq_configured': bool(config.groq_api_key),
         'gemini_configured': bool(config.gemini_api_key),
         'nvidia_configured': bool(config.nvidia_api_key),
         'llm_available': config.has_any_key(),
         'ffmpeg_installed': shutil.which('ffmpeg') is not None,
+        'is_local': _is_running_locally(),
+        'cookie_auth': cookie_status,
+        'detected_browser': _detect_browser(),
     })
 
 

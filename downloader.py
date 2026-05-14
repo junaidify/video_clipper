@@ -184,20 +184,103 @@ def _has_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
-def _get_cookies_path() -> Optional[str]:
+def _is_running_locally() -> bool:
+    """Detect if the app is running on localhost vs cloud."""
+    # Docker containers / Railway set these
+    if os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RENDER') or os.getenv('FLY_APP_NAME'):
+        return False
+    # Check if running inside Docker
+    if os.path.exists('/.dockerenv'):
+        return False
+    return True
+
+
+def _detect_browser() -> Optional[str]:
     """
-    Find cookies file for authenticated downloads.
-    Checks: COOKIES_FILE env var → cookies.txt in project root.
+    Detect which browser is available for cookie extraction.
+    Returns browser name for yt-dlp's --cookies-from-browser flag.
+    Only works on localhost (same machine as the browser).
     """
-    # Env var first
+    if not _is_running_locally():
+        return None
+
+    import platform as plat
+    system = plat.system()
+
+    if system == 'Windows':
+        # Check common browser paths on Windows
+        browsers = [
+            ('chrome', [
+                os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\User Data'),
+                os.path.expandvars(r'%PROGRAMFILES%\Google\Chrome\Application\chrome.exe'),
+                os.path.expandvars(r'%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe'),
+            ]),
+            ('edge', [
+                os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\Edge\User Data'),
+            ]),
+            ('firefox', [
+                os.path.expandvars(r'%APPDATA%\Mozilla\Firefox\Profiles'),
+            ]),
+            ('brave', [
+                os.path.expandvars(r'%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data'),
+            ]),
+        ]
+    elif system == 'Darwin':  # macOS
+        browsers = [
+            ('chrome', [os.path.expanduser('~/Library/Application Support/Google/Chrome')]),
+            ('safari', [os.path.expanduser('~/Library/Safari')]),
+            ('firefox', [os.path.expanduser('~/Library/Application Support/Firefox/Profiles')]),
+            ('brave', [os.path.expanduser('~/Library/Application Support/BraveSoftware/Brave-Browser')]),
+        ]
+    else:  # Linux
+        browsers = [
+            ('chrome', [os.path.expanduser('~/.config/google-chrome')]),
+            ('chromium', [os.path.expanduser('~/.config/chromium')]),
+            ('firefox', [os.path.expanduser('~/.mozilla/firefox')]),
+            ('brave', [os.path.expanduser('~/.config/BraveSoftware/Brave-Browser')]),
+        ]
+
+    for name, paths in browsers:
+        for p in paths:
+            if os.path.exists(p):
+                logger.info(f"Detected browser for cookies: {name}")
+                return name
+
+    return None
+
+
+def _get_cookies_config() -> dict:
+    """
+    Determine the best cookie strategy.
+    Priority:
+      1. COOKIES_FILE env var or cookies.txt file → use cookiefile
+      2. Local machine with browser → use cookies-from-browser (zero friction)
+      3. Nothing available → no cookies
+
+    Returns dict with either:
+      {'cookiefile': '/path/to/cookies.txt'}
+      {'cookiesfrombrowser': 'chrome'}
+      {} (empty — no cookies)
+    """
+    # Priority 1: explicit cookie file
     env_path = os.getenv('COOKIES_FILE')
     if env_path and os.path.isfile(env_path):
-        return env_path
-    # Project root fallback
+        logger.info(f"Using cookie file from env: {env_path}")
+        return {'cookiefile': env_path}
+
     local_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
     if os.path.isfile(local_path):
-        return local_path
-    return None
+        logger.info(f"Using cookie file: {local_path}")
+        return {'cookiefile': local_path}
+
+    # Priority 2: auto-extract from browser (localhost only)
+    browser = _detect_browser()
+    if browser:
+        logger.info(f"Will extract cookies from browser: {browser}")
+        return {'cookiesfrombrowser': browser}
+
+    # Priority 3: no cookies
+    return {}
 
 
 def check_ytdlp_version() -> dict:
@@ -236,9 +319,11 @@ def get_video_info(url: str) -> dict:
             'socket_timeout': 30,
         }
 
-        cookies_path = _get_cookies_path()
-        if cookies_path:
-            ydl_opts['cookiefile'] = cookies_path
+        cookies_config = _get_cookies_config()
+        if 'cookiefile' in cookies_config:
+            ydl_opts['cookiefile'] = cookies_config['cookiefile']
+        elif 'cookiesfrombrowser' in cookies_config:
+            ydl_opts['cookiesfrombrowser'] = (cookies_config['cookiesfrombrowser'],)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -364,11 +449,14 @@ def download_video(url: str, output_dir: str,
                 "Quality may be lower. Install FFmpeg for best results."
             )
 
-        # ── Cookie support ──
-        cookies_path = _get_cookies_path()
-        if cookies_path:
-            ydl_opts['cookiefile'] = cookies_path
-            logger.info(f"Using cookies from: {cookies_path}")
+        # ── Cookie support (auto-detect best method) ──
+        cookies_config = _get_cookies_config()
+        if 'cookiefile' in cookies_config:
+            ydl_opts['cookiefile'] = cookies_config['cookiefile']
+            logger.info(f"Using cookie file: {cookies_config['cookiefile']}")
+        elif 'cookiesfrombrowser' in cookies_config:
+            ydl_opts['cookiesfrombrowser'] = (cookies_config['cookiesfrombrowser'],)
+            logger.info(f"Extracting cookies from browser: {cookies_config['cookiesfrombrowser']}")
 
         # ── Download with retry logic ──
         last_error = None
@@ -392,7 +480,7 @@ def download_video(url: str, output_dir: str,
                     logger.info(f"Platform: {platform} | Title: {title} | Duration: {duration}s")
 
                     warning = None
-                    if not cookies_path:
+                    if not cookies_config:
                         hint = get_platform_hint(url)
                         if hint and 'cookies' in hint.get('login_tip', '').lower():
                             warning = (f"Tip: For private {hint['name']} content, "
