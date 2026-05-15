@@ -353,7 +353,8 @@ def get_video_info(url: str) -> dict:
 
 def download_video(url: str, output_dir: str,
                    max_resolution: int = 1080,
-                   retries: int = 3) -> DownloadResult:
+                   retries: int = 3,
+                   progress_hook=None) -> DownloadResult:
     """
     Download video from any URL using yt-dlp.
     Supports 1800+ platforms. Auto-uses cookies if available.
@@ -364,6 +365,7 @@ def download_video(url: str, output_dir: str,
         output_dir: Directory to save the downloaded video
         max_resolution: Maximum video height (default 1080p)
         retries: Number of retry attempts for transient failures
+        progress_hook: Optional callback(dict) for download progress updates
 
     Returns:
         DownloadResult with file path and metadata
@@ -457,6 +459,10 @@ def download_video(url: str, output_dir: str,
         elif 'cookiesfrombrowser' in cookies_config:
             ydl_opts['cookiesfrombrowser'] = (cookies_config['cookiesfrombrowser'],)
             logger.info(f"Extracting cookies from browser: {cookies_config['cookiesfrombrowser']}")
+
+        # ── Progress hook (if provided) ──
+        if progress_hook:
+            ydl_opts['progress_hooks'] = [progress_hook]
 
         # ── Download with retry logic ──
         last_error = None
