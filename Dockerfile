@@ -41,8 +41,20 @@ RUN pip install --no-cache-dir gunicorn
 # Decode cookies from env var at startup (if set), then launch server
 CMD bash -c '\
     if [ -n "$YOUTUBE_COOKIES_B64" ]; then \
-        echo "$YOUTUBE_COOKIES_B64" | base64 -d > /app/cookies.txt; \
-        echo "[startup] Decoded YOUTUBE_COOKIES_B64 → /app/cookies.txt"; \
+        echo "$YOUTUBE_COOKIES_B64" | tr -d "\r\n " | base64 -d > /app/cookies.txt 2>/dev/null; \
+        if [ -s /app/cookies.txt ]; then \
+            LINES=$(wc -l < /app/cookies.txt); \
+            SIZE=$(wc -c < /app/cookies.txt); \
+            echo "[startup] Decoded cookies → /app/cookies.txt (${SIZE} bytes, ${LINES} lines)"; \
+            head -1 /app/cookies.txt | grep -q "Netscape\|mozilla\|HTTP Cookie" \
+                && echo "[startup] Cookie format looks valid" \
+                || echo "[startup] WARNING: Cookie file may not be in Netscape format"; \
+        else \
+            echo "[startup] ERROR: Cookie decode produced empty file — check YOUTUBE_COOKIES_B64 value"; \
+            rm -f /app/cookies.txt; \
+        fi; \
+    else \
+        echo "[startup] No YOUTUBE_COOKIES_B64 set — YouTube may block downloads"; \
     fi && \
     gunicorn --bind 0.0.0.0:${PORT} \
         --workers 2 \

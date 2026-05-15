@@ -1435,7 +1435,8 @@
                     <div class="error-box" id="lib-error"></div>
                     <div class="progress-container" id="lib-progress" style="display:none">
                         <div class="progress-bar-bg"><div class="progress-bar" id="lib-progress-bar"></div></div>
-                        <div class="progress-info"><span class="msg" id="lib-progress-msg">Adding...</span></div>
+                        <div class="progress-info"><span class="msg" id="lib-progress-msg">Adding...</span><span class="pct" id="lib-progress-pct">0%</span></div>
+                        <div style="margin-top:6px;font-size:0.72rem;color:var(--text-ghost);font-family:var(--mono)" id="lib-elapsed"></div>
                     </div>
                 </div>
 
@@ -1485,6 +1486,7 @@
                     <div class="progress-bar-bg"><div class="progress-bar" id="smart-bar"></div></div>
                     <div class="progress-info"><span class="msg" id="smart-msg">Starting...</span><span class="pct" id="smart-pct">0%</span></div>
                 </div>
+                <div style="margin-top:6px;font-size:0.72rem;color:var(--text-ghost);font-family:var(--mono)" id="smart-elapsed"></div>
                 <div class="steps-row">
                     <div class="step" id="ss-download">DOWNLOAD</div>
                     <div class="step" id="ss-transcribe">TRANSCRIBE</div>
@@ -1564,6 +1566,7 @@
                     <div class="progress-bar-bg"><div class="progress-bar" id="seq-bar"></div></div>
                     <div class="progress-info"><span class="msg" id="seq-msg">Starting...</span><span class="pct" id="seq-pct">0%</span></div>
                 </div>
+                <div style="margin-top:6px;font-size:0.72rem;color:var(--text-ghost);font-family:var(--mono)" id="seq-elapsed"></div>
             </div>
             <div id="seq-results" style="display:none">
                 <div class="results-heading">REELS <span class="tag tag-purple" id="seq-count"></span></div>
@@ -1813,28 +1816,68 @@ function onLibFileSelect(input) {
     if (input.files[0]) document.getElementById('lib-file-name').textContent = input.files[0].name;
 }
 
+let libPollTimer = null;
+let libStartTime = null;
+
 async function addVideoFromUrl() {
     const url = document.getElementById('lib-url').value.trim();
     if (!url) return showErr('lib-error', 'Enter a URL');
     hideErr('lib-error');
-    showLibProgress('Downloading...');
+    showLibProgress('Connecting...', 5);
+    libStartTime = Date.now();
     const form = new FormData();
     form.append('url', url);
     try {
         const res = await fetch('/api/library/add', {method:'POST', body: form});
         const data = await res.json();
         if (data.error) { showErr('lib-error', data.error); hideLibProgress(); return; }
-        hideLibProgress();
-        document.getElementById('lib-url').value = '';
-        loadLibrary();
+        if (data.job_id) {
+            // Poll for progress
+            libPollTimer = setInterval(() => pollLibJob(data.job_id), 1000);
+        } else if (data.video) {
+            hideLibProgress();
+            document.getElementById('lib-url').value = '';
+            loadLibrary();
+        }
     } catch(e) { showErr('lib-error', e.message); hideLibProgress(); }
+}
+
+async function pollLibJob(jobId) {
+    try {
+        const res = await fetch(`/api/status/${jobId}`);
+        const d = await res.json();
+        const pct = d.progress || 0;
+        const elapsed = Math.floor((Date.now() - libStartTime) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+        showLibProgress(d.message || d.status, pct);
+        document.getElementById('lib-elapsed').textContent = `Elapsed: ${timeStr}`;
+
+        if (d.status === 'completed') {
+            clearInterval(libPollTimer);
+            libPollTimer = null;
+            hideLibProgress();
+            document.getElementById('lib-url').value = '';
+            loadLibrary();
+            refreshVideoSelects();
+        } else if (d.status === 'error') {
+            clearInterval(libPollTimer);
+            libPollTimer = null;
+            showErr('lib-error', d.error);
+            hideLibProgress();
+        }
+    } catch(e) {
+        console.error('Poll error:', e);
+    }
 }
 
 async function addVideoFromFile() {
     const file = document.getElementById('lib-file').files[0];
     if (!file) return showErr('lib-error', 'Select a file');
     hideErr('lib-error');
-    showLibProgress('Uploading...');
+    showLibProgress('Uploading...', 30);
     const form = new FormData();
     form.append('video', file);
     try {
@@ -1886,8 +1929,21 @@ function refreshVideoSelects() {
     });
 }
 
-function showLibProgress(msg) { document.getElementById('lib-progress').style.display='block'; document.getElementById('lib-progress-msg').textContent=msg; }
-function hideLibProgress() { document.getElementById('lib-progress').style.display='none'; }
+function showLibProgress(msg, pct) {
+    document.getElementById('lib-progress').style.display='block';
+    document.getElementById('lib-progress-msg').textContent = msg;
+    if (pct !== undefined) {
+        document.getElementById('lib-progress-bar').style.width = pct + '%';
+        document.getElementById('lib-progress-pct').textContent = pct + '%';
+    }
+}
+function hideLibProgress() {
+    document.getElementById('lib-progress').style.display='none';
+    document.getElementById('lib-progress-bar').style.width = '0%';
+    document.getElementById('lib-progress-pct').textContent = '0%';
+    const el = document.getElementById('lib-elapsed');
+    if (el) el.textContent = '';
+}
 
 // Smart Clips
 async function startSmartClip() {
@@ -1905,6 +1961,7 @@ async function startSmartClip() {
     document.getElementById('btn-smart').disabled = true;
     document.getElementById('smart-progress').style.display = 'block';
     document.getElementById('smart-results').style.display = 'none';
+    smartStartTime = Date.now();
     try {
         const res = await fetch('/api/smart-clip', {method:'POST', body: form});
         const data = await res.json();
@@ -1914,22 +1971,39 @@ async function startSmartClip() {
     } catch(e) { showErr('smart-error', e.message); document.getElementById('btn-smart').disabled = false; }
 }
 
+let smartStartTime = null;
+
 async function pollSmartJob(jobId) {
-    const res = await fetch(`/api/status/${jobId}`);
-    const d = await res.json();
-    document.getElementById('smart-bar').style.width = (d.progress||0)+'%';
-    document.getElementById('smart-msg').textContent = d.message || d.status;
-    document.getElementById('smart-pct').textContent = (d.progress||0)+'%';
-    updateSmartSteps(d.status);
-    if (d.status === 'completed') {
-        clearInterval(smartPoll);
-        document.getElementById('btn-smart').disabled = false;
-        if (d.clips?.length) showSmartResults(d.clips, jobId);
-    } else if (d.status === 'error') {
-        clearInterval(smartPoll);
-        showErr('smart-error', d.error);
-        document.getElementById('btn-smart').disabled = false;
-    }
+    try {
+        const res = await fetch(`/api/status/${jobId}`);
+        const d = await res.json();
+        const pct = d.progress || 0;
+        document.getElementById('smart-bar').style.width = pct + '%';
+        document.getElementById('smart-msg').textContent = d.message || d.status;
+        document.getElementById('smart-pct').textContent = pct + '%';
+
+        // Elapsed time
+        if (smartStartTime) {
+            const elapsed = Math.floor((Date.now() - smartStartTime) / 1000);
+            const mins = Math.floor(elapsed / 60);
+            const secs = elapsed % 60;
+            const elEl = document.getElementById('smart-elapsed');
+            if (elEl) elEl.textContent = `Elapsed: ${mins > 0 ? mins + 'm ' : ''}${secs}s`;
+        }
+
+        updateSmartSteps(d.status);
+        if (d.status === 'completed') {
+            clearInterval(smartPoll);
+            document.getElementById('btn-smart').disabled = false;
+            document.getElementById('smart-progress').style.display = 'none';
+            if (d.clips?.length) showSmartResults(d.clips, jobId);
+        } else if (d.status === 'error') {
+            clearInterval(smartPoll);
+            document.getElementById('smart-progress').style.display = 'none';
+            showErr('smart-error', d.error);
+            document.getElementById('btn-smart').disabled = false;
+        }
+    } catch(e) { console.error('Smart poll error:', e); }
 }
 
 function updateSmartSteps(status) {
@@ -2021,26 +2095,37 @@ async function startSequentialSplit() {
     form.append('use_transcript', document.getElementById('seq-transcript').checked);
     document.getElementById('seq-progress').style.display = 'block';
     document.getElementById('seq-results').style.display = 'none';
+    const seqStartTime = Date.now();
     try {
         const res = await fetch('/api/sequential-split', {method:'POST', body: form});
         const data = await res.json();
         if (data.error) return showErr('seq-error', data.error);
         const poll = setInterval(async () => {
-            const sr = await fetch(`/api/status/${data.job_id}`);
-            const sd = await sr.json();
-            document.getElementById('seq-bar').style.width = (sd.progress||0)+'%';
-            document.getElementById('seq-msg').textContent = sd.message || '';
-            document.getElementById('seq-pct').textContent = (sd.progress||0)+'%';
-            if (sd.status === 'completed') {
-                clearInterval(poll);
-                document.getElementById('seq-progress').style.display = 'none';
-                if (sd.reels?.length) showSeqResults(sd.reels, data.job_id);
-                else if (!sd.error) showErr('seq-error', sd.message || 'No reels produced');
-            } else if (sd.status === 'error') {
-                clearInterval(poll);
-                document.getElementById('seq-progress').style.display = 'none';
-                showErr('seq-error', sd.error);
-            }
+            try {
+                const sr = await fetch(`/api/status/${data.job_id}`);
+                const sd = await sr.json();
+                const pct = sd.progress || 0;
+                document.getElementById('seq-bar').style.width = pct + '%';
+                document.getElementById('seq-msg').textContent = sd.message || '';
+                document.getElementById('seq-pct').textContent = pct + '%';
+
+                const elapsed = Math.floor((Date.now() - seqStartTime) / 1000);
+                const mins = Math.floor(elapsed / 60);
+                const secs = elapsed % 60;
+                const elEl = document.getElementById('seq-elapsed');
+                if (elEl) elEl.textContent = `Elapsed: ${mins > 0 ? mins + 'm ' : ''}${secs}s`;
+
+                if (sd.status === 'completed') {
+                    clearInterval(poll);
+                    document.getElementById('seq-progress').style.display = 'none';
+                    if (sd.reels?.length) showSeqResults(sd.reels, data.job_id);
+                    else if (!sd.error) showErr('seq-error', sd.message || 'No reels produced');
+                } else if (sd.status === 'error') {
+                    clearInterval(poll);
+                    document.getElementById('seq-progress').style.display = 'none';
+                    showErr('seq-error', sd.error);
+                }
+            } catch(e) { console.error('Seq poll error:', e); }
         }, 2000);
     } catch(e) { showErr('seq-error', e.message); }
 }

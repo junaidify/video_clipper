@@ -149,8 +149,11 @@ def library_list():
 
 @app.route('/api/library/add', methods=['POST'])
 def library_add():
-    """Add a video to the library from URL or file upload."""
-    # ── URL path ──
+    """Add a video to the library from URL or file upload.
+    URL downloads run as background jobs with progress tracking.
+    File uploads remain synchronous (fast enough).
+    """
+    # ── URL path (async with progress) ──
     url = request.form.get('url', '').strip()
     if url:
         if not is_valid_url(url):
@@ -158,26 +161,21 @@ def library_add():
         drm = is_drm_platform(url)
         if drm:
             return jsonify({'error': f'{drm} uses DRM protection and cannot be downloaded. This applies to all streaming services like Netflix, Disney+, Hulu, etc.'}), 400
-        try:
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            dl_result = download_video(url, app.config['UPLOAD_FOLDER'])
-            if not dl_result.success:
-                return jsonify({'error': f'Download failed: {dl_result.error}'}), 400
 
-            duration = _get_video_duration(dl_result.file_path)
-            entry = video_library.add_video(
-                source_path=dl_result.file_path,
-                title=dl_result.title or Path(dl_result.file_path).stem,
-                source='url',
-                source_url=url,
-                duration=duration,
-            )
-            return jsonify({'success': True, 'video': entry.to_dict()})
-        except Exception as e:
-            logger.exception("Library add from URL failed")
-            return jsonify({'error': str(e)}), 500
+        job_id = str(uuid.uuid4())[:8]
+        jobs[job_id] = {
+            'status': 'downloading',
+            'progress': 5,
+            'message': 'Connecting...',
+            'error': None,
+            'video': None,
+            'started_at': time.time(),
+        }
+        thread = threading.Thread(target=_library_download_job, args=(job_id, url), daemon=True)
+        thread.start()
+        return jsonify({'success': True, 'job_id': job_id})
 
-    # ── File upload path ──
+    # ── File upload path (synchronous — fast enough) ──
     if 'video' in request.files:
         file = request.files['video']
         if file and file.filename and allowed_file(file.filename):
@@ -194,7 +192,6 @@ def library_add():
                 source='upload',
                 duration=duration,
             )
-            # Clean up temp upload (library made its own copy)
             try:
                 os.remove(tmp_path)
             except OSError:
@@ -203,6 +200,77 @@ def library_add():
             return jsonify({'success': True, 'video': entry.to_dict()})
 
     return jsonify({'error': 'No valid video file or URL provided'}), 400
+
+
+def _library_download_job(job_id: str, url: str):
+    """Background job: download video with real-time progress updates."""
+    try:
+        import yt_dlp
+
+        jobs[job_id]['message'] = 'Resolving video info...'
+        jobs[job_id]['progress'] = 10
+
+        # Progress hook — yt-dlp calls this during download
+        def _progress_hook(d):
+            if d['status'] == 'downloading':
+                total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+                downloaded = d.get('downloaded_bytes', 0)
+                speed = d.get('speed') or 0
+                eta = d.get('eta') or 0
+
+                if total > 0:
+                    pct = min(85, int(15 + (downloaded / total) * 70))
+                    size_mb = total / (1024 * 1024)
+                    dl_mb = downloaded / (1024 * 1024)
+                    jobs[job_id]['progress'] = pct
+                    jobs[job_id]['message'] = f'Downloading: {dl_mb:.1f} / {size_mb:.1f} MB'
+                else:
+                    dl_mb = downloaded / (1024 * 1024)
+                    jobs[job_id]['message'] = f'Downloading: {dl_mb:.1f} MB'
+
+                if speed > 0:
+                    speed_mb = speed / (1024 * 1024)
+                    jobs[job_id]['message'] += f' ({speed_mb:.1f} MB/s)'
+                if eta > 0:
+                    jobs[job_id]['message'] += f' — {eta}s left'
+
+            elif d['status'] == 'finished':
+                jobs[job_id]['progress'] = 88
+                jobs[job_id]['message'] = 'Download complete, processing...'
+
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        # Use download_video but with progress hook injected
+        dl_result = download_video(url, app.config['UPLOAD_FOLDER'],
+                                   progress_hook=_progress_hook)
+
+        if not dl_result.success:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['error'] = f'Download failed: {dl_result.error}'
+            jobs[job_id]['progress'] = 0
+            return
+
+        jobs[job_id]['progress'] = 92
+        jobs[job_id]['message'] = 'Saving to library...'
+
+        duration = _get_video_duration(dl_result.file_path)
+        entry = video_library.add_video(
+            source_path=dl_result.file_path,
+            title=dl_result.title or Path(dl_result.file_path).stem,
+            source='url',
+            source_url=url,
+            duration=duration,
+        )
+
+        jobs[job_id]['status'] = 'completed'
+        jobs[job_id]['progress'] = 100
+        jobs[job_id]['message'] = 'Added to library!'
+        jobs[job_id]['video'] = entry.to_dict()
+
+    except Exception as e:
+        logger.exception("Library download job failed")
+        jobs[job_id]['status'] = 'error'
+        jobs[job_id]['error'] = str(e)
+        jobs[job_id]['progress'] = 0
 
 
 @app.route('/api/library/delete', methods=['POST'])
@@ -266,8 +334,29 @@ def _smart_clip_job(job_id, video_path, video_id, output_dir, settings):
     try:
         # Transcribe
         jobs[job_id]['status'] = 'transcribing'
-        jobs[job_id]['message'] = f'Transcribing (model: {settings["model_size"]})...'
-        jobs[job_id]['progress'] = 20
+        jobs[job_id]['message'] = f'Loading Whisper model ({settings["model_size"]})...'
+        jobs[job_id]['progress'] = 10
+
+        # Simulate sub-steps for transcription (the longest phase)
+        def _transcribe_progress_update():
+            """Gradually increment progress during transcription."""
+            import time as _time
+            step = 15
+            while jobs[job_id]['status'] == 'transcribing' and step < 48:
+                _time.sleep(5)
+                if jobs[job_id]['status'] != 'transcribing':
+                    break
+                step = min(step + 3, 48)
+                jobs[job_id]['progress'] = step
+                if step < 20:
+                    jobs[job_id]['message'] = f'Loading Whisper model ({settings["model_size"]})...'
+                elif step < 35:
+                    jobs[job_id]['message'] = f'Transcribing audio (model: {settings["model_size"]})...'
+                else:
+                    jobs[job_id]['message'] = f'Processing transcript segments...'
+
+        progress_thread = threading.Thread(target=_transcribe_progress_update, daemon=True)
+        progress_thread.start()
 
         transcript = transcribe(
             video_path=video_path,
@@ -314,7 +403,8 @@ def _smart_clip_job(job_id, video_path, video_id, output_dir, settings):
 
         # Split
         jobs[job_id]['status'] = 'splitting'
-        jobs[job_id]['message'] = 'Splitting clips...'
+        total_clips = len(candidates)
+        jobs[job_id]['message'] = f'Splitting clip 1 of {total_clips}...'
 
         clipper_config = ClipperConfig(
             min_clip_duration=settings['min_duration'],
@@ -322,12 +412,19 @@ def _smart_clip_job(job_id, video_path, video_id, output_dir, settings):
             crop_vertical=settings['crop_vertical'],
         )
         clipper = VideoClipper(clipper_config)
-        results = clipper.extract_all_clips(
-            video_path=video_path,
-            candidates=candidates,
-            output_dir=output_dir,
-            video_duration=transcript.duration,
-        )
+
+        # Split one at a time with per-clip progress
+        results = []
+        for i, cand in enumerate(candidates):
+            jobs[job_id]['message'] = f'Splitting clip {i+1} of {total_clips}...'
+            jobs[job_id]['progress'] = 65 + int((i / total_clips) * 30)
+            clip_results = clipper.extract_all_clips(
+                video_path=video_path,
+                candidates=[cand],
+                output_dir=output_dir,
+                video_duration=transcript.duration,
+            )
+            results.extend(clip_results)
 
         clips_info = []
         for r in results:
@@ -947,6 +1044,46 @@ def get_settings():
         'cookie_auth': cookie_status,
         'detected_browser': _detect_browser(),
     })
+
+
+@app.route('/api/cookie-status', methods=['GET'])
+def cookie_diagnostic():
+    """Diagnostic endpoint to check cookie file health on deployed instances."""
+    result = {
+        'env_var_set': bool(os.getenv('YOUTUBE_COOKIES_B64')),
+        'env_var_length': len(os.getenv('YOUTUBE_COOKIES_B64', '')),
+    }
+
+    # Check cookie file at expected path
+    cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+    result['cookie_file_path'] = cookie_path
+    result['cookie_file_exists'] = os.path.isfile(cookie_path)
+
+    if result['cookie_file_exists']:
+        stat = os.stat(cookie_path)
+        result['cookie_file_size'] = stat.st_size
+        with open(cookie_path, 'r', errors='replace') as f:
+            lines = f.readlines()
+        result['cookie_file_lines'] = len(lines)
+        # Check format (first line should mention Netscape/HTTP Cookie)
+        first_line = lines[0].strip() if lines else ''
+        result['first_line_preview'] = first_line[:80]
+        result['valid_netscape_format'] = 'netscape' in first_line.lower() or 'http cookie' in first_line.lower()
+        # Count actual cookie entries (non-comment, non-empty lines)
+        cookie_entries = [l for l in lines if l.strip() and not l.startswith('#')]
+        result['cookie_entries'] = len(cookie_entries)
+        # Check for youtube.com domain entries
+        yt_entries = [l for l in cookie_entries if 'youtube' in l.lower() or 'google' in l.lower()]
+        result['youtube_cookie_entries'] = len(yt_entries)
+    else:
+        result['cookie_file_size'] = 0
+        result['reason'] = 'Cookie file not found. Check YOUTUBE_COOKIES_B64 env var and container startup logs.'
+
+    # What _get_cookies_config returns
+    cookies_config = _get_cookies_config()
+    result['active_config'] = cookies_config if cookies_config else 'none'
+
+    return jsonify(result)
 
 
 # ═══════════════════════════════════════════════════
