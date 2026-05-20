@@ -72,13 +72,24 @@ PLATFORM_HINTS = {
     },
 }
 
+# YouTube player clients to try (in order) when bot detection kicks in.
+# 'mediaconnect' bypasses most bot detection (including Made-for-Kids COPPA restrictions).
+# 'android' uses the mobile API which has looser restrictions.
+# 'web' is the default but triggers bot detection on datacenter IPs and kids content.
+_YT_PLAYER_CLIENTS = ['mediaconnect', 'android', 'web']
+
 # Platforms that use DRM — will never work
+# NOTE: use domain names only (not URL paths) — _extract_domain returns hostname
 DRM_DOMAINS = {
     'netflix.com', 'disneyplus.com', 'disney.com', 'hulu.com',
-    'hbomax.com', 'max.com', 'primevideo.com', 'amazon.com/gp/video',
+    'hbomax.com', 'max.com', 'primevideo.com', 'amazon.com',
     'tv.apple.com', 'paramountplus.com', 'peacocktv.com',
     'crunchyroll.com', 'funimation.com', 'discoveryplus.com',
 }
+
+# Amazon URLs that are NOT DRM (e.g. product pages, shopping)
+# Only amazon.com/gp/video and amazon.com/*/dp/ (Prime Video) are DRM
+_AMAZON_VIDEO_PATTERNS = ['/gp/video', '/dp/', '/watch/', '/video/']
 
 
 @dataclass
@@ -150,6 +161,12 @@ def is_drm_platform(url: str) -> Optional[str]:
     domain = _extract_domain(url)
     for drm_domain in DRM_DOMAINS:
         if drm_domain in domain:
+            # Amazon special case: only video URLs are DRM, not all of amazon.com
+            if 'amazon.com' in drm_domain:
+                url_lower = url.lower()
+                if any(p in url_lower for p in _AMAZON_VIDEO_PATTERNS):
+                    return 'Amazon Prime Video'
+                return None  # Not a video URL, let yt-dlp try
             return drm_domain.split('.')[0].capitalize()
     return None
 
@@ -208,39 +225,41 @@ def _detect_browser() -> Optional[str]:
     system = plat.system()
 
     if system == 'Windows':
-        # Check common browser paths on Windows
+        # Firefox first — no DPAPI issues, no locked DB issues
         browsers = [
+            ('firefox', [
+                os.path.expandvars(r'%APPDATA%\Mozilla\Firefox\Profiles'),
+            ]),
+            ('edge', [
+                os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\Edge\User Data'),
+            ]),
+            ('brave', [
+                os.path.expandvars(r'%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data'),
+            ]),
             ('chrome', [
                 os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\User Data'),
                 os.path.expandvars(r'%PROGRAMFILES%\Google\Chrome\Application\chrome.exe'),
                 os.path.expandvars(r'%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe'),
             ]),
-            ('edge', [
-                os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\Edge\User Data'),
-            ]),
-            ('firefox', [
-                os.path.expandvars(r'%APPDATA%\Mozilla\Firefox\Profiles'),
-            ]),
-            ('brave', [
-                os.path.expandvars(r'%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data'),
-            ]),
         ]
     elif system == 'Darwin':  # macOS
         browsers = [
-            ('chrome', [os.path.expanduser('~/Library/Application Support/Google/Chrome')]),
-            ('safari', [os.path.expanduser('~/Library/Safari')]),
             ('firefox', [os.path.expanduser('~/Library/Application Support/Firefox/Profiles')]),
+            ('safari', [os.path.expanduser('~/Library/Safari')]),
+            ('chrome', [os.path.expanduser('~/Library/Application Support/Google/Chrome')]),
             ('brave', [os.path.expanduser('~/Library/Application Support/BraveSoftware/Brave-Browser')]),
         ]
     else:  # Linux
         browsers = [
+            ('firefox', [os.path.expanduser('~/.mozilla/firefox')]),
             ('chrome', [os.path.expanduser('~/.config/google-chrome')]),
             ('chromium', [os.path.expanduser('~/.config/chromium')]),
-            ('firefox', [os.path.expanduser('~/.mozilla/firefox')]),
             ('brave', [os.path.expanduser('~/.config/BraveSoftware/Brave-Browser')]),
         ]
 
     for name, paths in browsers:
+        if name in _browser_blacklist:
+            continue  # skip previously failed browsers
         for p in paths:
             if os.path.exists(p):
                 logger.info(f"Detected browser for cookies: {name}")
@@ -255,11 +274,12 @@ def _get_cookies_config() -> dict:
     Priority:
       1. COOKIES_FILE env var or cookies.txt file → use cookiefile
       2. Local machine with browser → use cookies-from-browser (zero friction)
+         Tries multiple browsers in case one fails (e.g. Chrome DPAPI on v127+)
       3. Nothing available → no cookies
 
     Returns dict with either:
       {'cookiefile': '/path/to/cookies.txt'}
-      {'cookiesfrombrowser': 'chrome'}
+      {'cookiesfrombrowser': 'firefox'}
       {} (empty — no cookies)
     """
     # Priority 1: explicit cookie file
@@ -274,6 +294,7 @@ def _get_cookies_config() -> dict:
         return {'cookiefile': local_path}
 
     # Priority 2: auto-extract from browser (localhost only)
+    # Try multiple browsers — Chrome 127+ has DPAPI issues, Firefox usually works
     browser = _detect_browser()
     if browser:
         logger.info(f"Will extract cookies from browser: {browser}")
@@ -281,6 +302,81 @@ def _get_cookies_config() -> dict:
 
     # Priority 3: no cookies
     return {}
+
+
+# Browsers that failed cookie extraction this session
+_browser_blacklist = set()
+
+# ALL Chromium-based browsers share the same DPAPI encryption on Windows.
+# If one fails DPAPI, they ALL will. Don't waste retries cycling through them.
+_CHROMIUM_BROWSERS = {'chrome', 'edge', 'brave', 'chromium', 'opera', 'vivaldi'}
+
+
+def _blacklist_browser(browser: str, reason: str = ''):
+    """
+    Blacklist a browser. If DPAPI-related, blacklist ALL Chromium browsers
+    since they all use the same Windows encryption and will all fail.
+    """
+    _browser_blacklist.add(browser)
+    dpapi_keywords = ['dpapi', 'failed to decrypt', 'could not copy', 'cookie database']
+    if any(kw in reason.lower() for kw in dpapi_keywords) and browser in _CHROMIUM_BROWSERS:
+        logger.warning(f"DPAPI error on {browser} — blacklisting ALL Chromium browsers (they all share DPAPI)")
+        _browser_blacklist.update(_CHROMIUM_BROWSERS)
+    else:
+        logger.warning(f"Blacklisting browser: {browser} ({reason})")
+
+
+def _get_cookies_config_with_fallback() -> dict:
+    """
+    Like _get_cookies_config but tracks browsers that fail (DPAPI etc.)
+    and skips them on subsequent calls within the same process.
+    """
+    config = _get_cookies_config()
+    if 'cookiesfrombrowser' in config:
+        browser = config['cookiesfrombrowser']
+        if browser in _browser_blacklist:
+            # This browser failed before — only Firefox can work if DPAPI is the issue
+            alt = _find_non_blacklisted_browser()
+            if alt:
+                logger.info(f"Browser {browser} blacklisted, using {alt}")
+                return {'cookiesfrombrowser': alt}
+            else:
+                logger.warning(f"All browsers blacklisted, proceeding without cookies")
+                return {}
+    return config
+
+
+def _find_non_blacklisted_browser() -> Optional[str]:
+    """Find a browser that hasn't been blacklisted. Prefers Firefox (no DPAPI)."""
+    if not _is_running_locally():
+        return None
+
+    import platform as plat
+    system = plat.system()
+
+    # Firefox FIRST and ONLY if DPAPI failed — it's the only browser
+    # that uses its own encryption instead of Windows DPAPI
+    if system == 'Windows':
+        candidates = {
+            'firefox': [os.path.expandvars(r'%APPDATA%\Mozilla\Firefox\Profiles')],
+        }
+    elif system == 'Darwin':
+        candidates = {
+            'firefox': [os.path.expanduser('~/Library/Application Support/Firefox/Profiles')],
+            'safari': [os.path.expanduser('~/Library/Safari')],
+        }
+    else:
+        candidates = {
+            'firefox': [os.path.expanduser('~/.mozilla/firefox')],
+        }
+
+    for name, paths in candidates.items():
+        if name in _browser_blacklist:
+            continue
+        for p in paths:
+            if os.path.exists(p):
+                return name
+    return None
 
 
 def check_ytdlp_version() -> dict:
@@ -311,6 +407,7 @@ def get_video_info(url: str) -> dict:
 
     try:
         import yt_dlp
+        is_youtube = any(yt in url.lower() for yt in ['youtube.com', 'youtu.be'])
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
@@ -318,24 +415,78 @@ def get_video_info(url: str) -> dict:
             'geo_bypass': True,
             'socket_timeout': 30,
         }
+        # YouTube: use multiple player clients to bypass bot detection
+        # especially for Made-for-Kids / COPPA content
+        if is_youtube:
+            ydl_opts['extractor_args'] = {
+                'youtube': {'player_client': _YT_PLAYER_CLIENTS}
+            }
 
-        cookies_config = _get_cookies_config()
+        cookies_config = _get_cookies_config_with_fallback()
         if 'cookiefile' in cookies_config:
             ydl_opts['cookiefile'] = cookies_config['cookiefile']
         elif 'cookiesfrombrowser' in cookies_config:
             ydl_opts['cookiesfrombrowser'] = (cookies_config['cookiesfrombrowser'],)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return {
-                'title': info.get('title', 'Unknown'),
-                'duration': info.get('duration', 0),
-                'uploader': info.get('uploader', 'Unknown'),
-                'description': info.get('description', ''),
-                'thumbnail': info.get('thumbnail', ''),
-                'platform': _detect_platform(url),
-                'url': url,
-            }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                return {
+                    'title': info.get('title', 'Unknown'),
+                    'duration': info.get('duration', 0),
+                    'uploader': info.get('uploader', 'Unknown'),
+                    'description': info.get('description', ''),
+                    'thumbnail': info.get('thumbnail', ''),
+                    'platform': _detect_platform(url),
+                    'url': url,
+                }
+        except Exception as inner_e:
+            # If browser cookie extraction failure, blacklist and retry
+            _cookie_errs = ['DPAPI', 'Failed to decrypt', 'Could not copy',
+                            'cookie database', 'unable to extract cookies',
+                            'permission denied', 'PermissionError',
+                            'could not copy', 'locked', 'being used by another']
+            if any(kw.lower() in str(inner_e).lower() for kw in _cookie_errs):
+                if 'cookiesfrombrowser' in ydl_opts:
+                    failed = ydl_opts['cookiesfrombrowser'][0]
+                    # Blacklist — if DPAPI, kills ALL Chromium browsers at once
+                    _blacklist_browser(failed, str(inner_e))
+
+                    # Only Firefox can survive DPAPI — try it if available
+                    alt = _find_non_blacklisted_browser()
+                    if alt:
+                        logger.info(f"Retrying get_video_info with {alt} (non-Chromium)")
+                        ydl_opts['cookiesfrombrowser'] = (alt,)
+                        try:
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                info = ydl.extract_info(url, download=False)
+                                return {
+                                    'title': info.get('title', 'Unknown'),
+                                    'duration': info.get('duration', 0),
+                                    'uploader': info.get('uploader', 'Unknown'),
+                                    'description': info.get('description', ''),
+                                    'thumbnail': info.get('thumbnail', ''),
+                                    'platform': _detect_platform(url),
+                                    'url': url,
+                                }
+                        except Exception:
+                            _blacklist_browser(alt, str(inner_e))
+                            logger.warning(f"Firefox also failed, trying without cookies")
+
+                    # Fall back to no cookies
+                    ydl_opts.pop('cookiesfrombrowser', None)
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                        return {
+                            'title': info.get('title', 'Unknown'),
+                            'duration': info.get('duration', 0),
+                            'uploader': info.get('uploader', 'Unknown'),
+                            'description': info.get('description', ''),
+                            'thumbnail': info.get('thumbnail', ''),
+                            'platform': _detect_platform(url),
+                            'url': url,
+                        }
+            raise inner_e
     except Exception as e:
         error_msg = str(e)
         hint = get_platform_hint(url)
@@ -387,6 +538,7 @@ def download_video(url: str, output_dir: str,
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    is_youtube = any(yt in url.lower() for yt in ['youtube.com', 'youtu.be'])
     logger.info(f"Downloading from {platform}: {url}")
 
     try:
@@ -451,8 +603,16 @@ def download_video(url: str, output_dir: str,
                 "Quality may be lower. Install FFmpeg for best results."
             )
 
-        # ── Cookie support (auto-detect best method) ──
-        cookies_config = _get_cookies_config()
+        # ── YouTube: use multiple player clients to bypass bot detection ──
+        # Critical for Made-for-Kids / COPPA content which triggers bot detection
+        # on the default 'web' client, especially on datacenter IPs
+        if is_youtube:
+            ydl_opts['extractor_args'] = {
+                'youtube': {'player_client': _YT_PLAYER_CLIENTS}
+            }
+
+        # ── Cookie support (auto-detect best method, with DPAPI fallback) ──
+        cookies_config = _get_cookies_config_with_fallback()
         if 'cookiefile' in cookies_config:
             ydl_opts['cookiefile'] = cookies_config['cookiefile']
             logger.info(f"Using cookie file: {cookies_config['cookiefile']}")
@@ -501,8 +661,53 @@ def download_video(url: str, output_dir: str,
                         warning=warning,
                     )
 
-            except yt_dlp.utils.DownloadError as e:
+            except Exception as e:
                 last_error = str(e)
+
+                # ── Browser cookie extraction failure → blacklist browser, retry with alternative ──
+                # MUST catch Exception (not just DownloadError) because cookie errors
+                # from YoutubeDL.__init__() raise PermissionError/OSError, not DownloadError.
+                # Covers: DPAPI decryption (Chrome 127+), locked database (Chrome running),
+                # permission errors, missing profiles, etc.
+                _cookie_fail_keywords = ['DPAPI', 'Failed to decrypt', 'Could not copy',
+                                         'cookie database', 'unable to extract cookies',
+                                         'permission denied', 'PermissionError',
+                                         'could not copy', 'locked', 'being used by another']
+                if any(kw.lower() in last_error.lower() for kw in _cookie_fail_keywords):
+                    if 'cookiesfrombrowser' in ydl_opts:
+                        failed = ydl_opts['cookiesfrombrowser'][0]
+                        # Blacklist — if DPAPI, this kills ALL Chromium browsers at once
+                        _blacklist_browser(failed, last_error)
+                        alt = _find_non_blacklisted_browser()
+                        if alt:
+                            logger.info(f"Switching to {alt} (non-Chromium, no DPAPI)")
+                            ydl_opts['cookiesfrombrowser'] = (alt,)
+                            continue
+                        else:
+                            # No working browser — strip cookies entirely and retry
+                            logger.warning("No working browser for cookies, proceeding without")
+                            ydl_opts.pop('cookiesfrombrowser', None)
+                            continue
+
+                # YouTube bot detection ("Sign in to confirm") — retry with
+                # different player client before giving up. Made-for-Kids / COPPA
+                # videos trigger this aggressively on the default 'web' client.
+                if 'sign in to confirm' in last_error.lower() and is_youtube:
+                    current_clients = ydl_opts.get('extractor_args', {}).get('youtube', {}).get('player_client', [])
+                    if len(current_clients) > 1:
+                        # Drop the first client that failed, try remaining ones
+                        remaining = current_clients[1:]
+                        logger.warning(f"YouTube bot detection hit, dropping client '{current_clients[0]}', trying {remaining}")
+                        ydl_opts['extractor_args'] = {'youtube': {'player_client': remaining}}
+                        continue
+                    elif not ydl_opts.get('cookiefile') and not ydl_opts.get('cookiesfrombrowser'):
+                        # All clients exhausted AND no cookies — this is truly permanent
+                        logger.error("YouTube bot detection: all player clients failed and no cookies available")
+                        break
+                    else:
+                        # Has cookies but still failing — permanent
+                        break
+
                 # Don't retry on permanent errors
                 permanent = ['DRM', 'private', 'not available', 'copyright',
                              'removed', 'terminated', 'does not exist',
@@ -520,7 +725,7 @@ def download_video(url: str, output_dir: str,
         hint = get_platform_hint(url)
         if hint:
             error_msg += f"\n\n{hint['name']} tip: {hint['known_issues']}"
-            if not cookies_path:
+            if not cookies_config:
                 error_msg += f"\n{hint['login_tip']}"
 
         logger.error(f"Download failed after {retries} attempts: {error_msg}")
