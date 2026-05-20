@@ -1655,6 +1655,37 @@
                     </div>
                 </div>
             </div>
+
+            <div class="card reveal reveal-d2" style="margin-top:20px">
+                <div class="card-header"><span class="card-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span> YOUTUBE COOKIE AUTH</div>
+                <p style="color:var(--text-dim);font-size:0.84rem;line-height:1.7;margin-bottom:16px;position:relative;z-index:1">
+                    YouTube blocks downloads from cloud servers. Upload a <code style="background:var(--bg-elevated);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border)">cookies.txt</code> file to authenticate.
+                </p>
+                <div style="margin-bottom:16px">
+                    <div class="cookie-status-row" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                        <span class="tag" id="cookie-status-tag" style="font-size:0.78rem">Checking...</span>
+                        <span id="cookie-status-msg" style="color:var(--text-ghost);font-size:0.78rem;font-family:var(--mono)"></span>
+                    </div>
+                    <div class="upload-zone" id="cookie-upload-zone" style="padding:20px;min-height:auto;cursor:pointer" onclick="document.getElementById('cookie-file-input').click()">
+                        <span class="uz-icon" style="margin-bottom:8px"><svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
+                        <p style="margin:0;font-size:0.82rem">Drop cookies.txt here or click to browse</p>
+                        <input type="file" id="cookie-file-input" accept=".txt" style="display:none" onchange="uploadCookieFile(this)">
+                    </div>
+                    <div class="error-box" id="cookie-error"></div>
+                    <div id="cookie-success" style="display:none;color:var(--lime);font-size:0.84rem;margin-top:10px;font-family:var(--mono)"></div>
+                </div>
+                <details style="position:relative;z-index:1">
+                    <summary style="color:var(--text-dim);font-size:0.78rem;cursor:pointer;font-family:var(--display);letter-spacing:0.05em">HOW TO GET COOKIES.TXT</summary>
+                    <div style="color:var(--text-ghost);font-size:0.78rem;line-height:1.8;margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border)">
+                        <strong style="color:var(--text-dim)">Option A — Browser extension (any browser):</strong><br>
+                        1. Install "Get cookies.txt LOCALLY" extension<br>
+                        2. Go to youtube.com (make sure you're logged in)<br>
+                        3. Click extension → Export → Upload the file here<br><br>
+                        <strong style="color:var(--text-dim)">Option B — yt-dlp command (if installed):</strong><br>
+                        <code style="background:var(--bg-main);padding:4px 8px;border-radius:4px;display:inline-block;margin-top:4px">yt-dlp --cookies-from-browser firefox --cookies cookies.txt "https://youtube.com"</code>
+                    </div>
+                </details>
+            </div>
         </div>
     </div>
 </div>
@@ -1972,11 +2003,13 @@ async function startSmartClip() {
 }
 
 let smartStartTime = null;
+let smartPollFails = 0;
 
 async function pollSmartJob(jobId) {
     try {
         const res = await fetch(`/api/status/${jobId}`);
         const d = await res.json();
+        smartPollFails = 0;  // reset on success
         const pct = d.progress || 0;
         document.getElementById('smart-bar').style.width = pct + '%';
         document.getElementById('smart-msg').textContent = d.message || d.status;
@@ -2003,7 +2036,16 @@ async function pollSmartJob(jobId) {
             showErr('smart-error', d.error);
             document.getElementById('btn-smart').disabled = false;
         }
-    } catch(e) { console.error('Smart poll error:', e); }
+    } catch(e) {
+        smartPollFails++;
+        console.error('Smart poll error:', e);
+        if (smartPollFails >= 5) {
+            clearInterval(smartPoll);
+            document.getElementById('smart-progress').style.display = 'none';
+            showErr('smart-error', 'Lost connection to server. Please try again.');
+            document.getElementById('btn-smart').disabled = false;
+        }
+    }
 }
 
 function updateSmartSteps(status) {
@@ -2083,10 +2125,16 @@ function showManualResults(results, jobId) {
 }
 
 // Sequential Reels
+let seqPollTimer = null;
+
 async function startSequentialSplit() {
     const videoId = document.getElementById('seq-video-select').value;
     if (!videoId) return showErr('seq-error', 'Select a video');
     hideErr('seq-error');
+
+    // Cancel any existing poll from a previous run
+    if (seqPollTimer) { clearInterval(seqPollTimer); seqPollTimer = null; }
+
     const form = new FormData();
     form.append('video_id', videoId);
     form.append('target_duration', document.getElementById('seq-target').value);
@@ -2100,7 +2148,7 @@ async function startSequentialSplit() {
         const res = await fetch('/api/sequential-split', {method:'POST', body: form});
         const data = await res.json();
         if (data.error) return showErr('seq-error', data.error);
-        const poll = setInterval(async () => {
+        seqPollTimer = setInterval(async () => {
             try {
                 const sr = await fetch(`/api/status/${data.job_id}`);
                 const sd = await sr.json();
@@ -2116,12 +2164,12 @@ async function startSequentialSplit() {
                 if (elEl) elEl.textContent = `Elapsed: ${mins > 0 ? mins + 'm ' : ''}${secs}s`;
 
                 if (sd.status === 'completed') {
-                    clearInterval(poll);
+                    clearInterval(seqPollTimer); seqPollTimer = null;
                     document.getElementById('seq-progress').style.display = 'none';
                     if (sd.reels?.length) showSeqResults(sd.reels, data.job_id);
                     else if (!sd.error) showErr('seq-error', sd.message || 'No reels produced');
                 } else if (sd.status === 'error') {
-                    clearInterval(poll);
+                    clearInterval(seqPollTimer); seqPollTimer = null;
                     document.getElementById('seq-progress').style.display = 'none';
                     showErr('seq-error', sd.error);
                 }
@@ -2651,10 +2699,63 @@ document.querySelectorAll('.upload-zone').forEach(zone => {
     zone.addEventListener('drop', () => zone.classList.remove('dragover'));
 });
 
+// Cookie upload & status
+async function checkCookieStatus() {
+    try {
+        const res = await fetch('/api/cookie-status');
+        const d = await res.json();
+        const tag = document.getElementById('cookie-status-tag');
+        const msg = document.getElementById('cookie-status-msg');
+        if (d.cookie_file_exists && d.youtube_cookie_entries > 0) {
+            tag.textContent = 'Active';
+            tag.className = 'tag tag-green';
+            msg.textContent = `${d.youtube_cookie_entries} YouTube cookies (${d.cookie_file_size} bytes)`;
+        } else if (d.cookie_file_exists) {
+            tag.textContent = 'Invalid';
+            tag.className = 'tag tag-yellow';
+            msg.textContent = 'Cookie file exists but no YouTube entries found';
+        } else {
+            tag.textContent = 'Not Set';
+            tag.className = 'tag tag-warn';
+            msg.textContent = 'Upload cookies.txt to enable YouTube downloads';
+        }
+    } catch(e) {
+        document.getElementById('cookie-status-tag').textContent = 'Unknown';
+    }
+}
+
+async function uploadCookieFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    hideErr('cookie-error');
+    document.getElementById('cookie-success').style.display = 'none';
+
+    // Validate it looks like a Netscape cookie file
+    const text = await file.text();
+    if (!text.includes('youtube') && !text.includes('google')) {
+        showErr('cookie-error', 'This file doesn\'t contain YouTube/Google cookies. Make sure you export cookies from youtube.com.');
+        input.value = '';
+        return;
+    }
+
+    const form = new FormData();
+    form.append('cookie_file', file);
+    try {
+        const res = await fetch('/api/upload-cookies', {method:'POST', body: form});
+        const data = await res.json();
+        if (data.error) { showErr('cookie-error', data.error); return; }
+        document.getElementById('cookie-success').style.display = 'block';
+        document.getElementById('cookie-success').textContent = `Cookies saved! ${data.youtube_entries} YouTube entries loaded.`;
+        input.value = '';
+        checkCookieStatus();
+    } catch(e) { showErr('cookie-error', e.message); }
+}
+
 // Init
 loadLibrary();
 loadSettings();
 loadTrainingSessions();
+checkCookieStatus();
 </script>
 </body>
 </html>

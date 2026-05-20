@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 from datetime import datetime
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
@@ -44,6 +45,7 @@ class VideoLibrary:
         self.root = Path(library_root)
         self.root.mkdir(parents=True, exist_ok=True)
         self._index_path = self.root / LIBRARY_INDEX
+        self._lock = threading.Lock()
         self._index = self._load_index()
 
     def _load_index(self) -> dict:
@@ -57,7 +59,7 @@ class VideoLibrary:
         return {"videos": {}}
 
     def _save_index(self):
-        """Persist library index to disk."""
+        """Persist library index to disk (caller must hold self._lock)."""
         with open(self._index_path, "w", encoding="utf-8") as f:
             json.dump(self._index, f, indent=2, ensure_ascii=False)
 
@@ -123,9 +125,10 @@ class VideoLibrary:
             clips_directories=[],
         )
 
-        # Save to index
-        self._index["videos"][video_id] = entry.to_dict()
-        self._save_index()
+        # Save to index (thread-safe)
+        with self._lock:
+            self._index["videos"][video_id] = entry.to_dict()
+            self._save_index()
 
         logger.info(f"Video added to library: {video_id} ({file_size_mb:.1f} MB)")
         return entry
@@ -151,10 +154,11 @@ class VideoLibrary:
 
     def add_clips_directory(self, video_id: str, clips_dir: str):
         """Record a clips output directory for a video."""
-        if video_id in self._index["videos"]:
-            if clips_dir not in self._index["videos"][video_id]["clips_directories"]:
-                self._index["videos"][video_id]["clips_directories"].append(clips_dir)
-                self._save_index()
+        with self._lock:
+            if video_id in self._index["videos"]:
+                if clips_dir not in self._index["videos"][video_id]["clips_directories"]:
+                    self._index["videos"][video_id]["clips_directories"].append(clips_dir)
+                    self._save_index()
 
     def get_clips_for_video(self, video_id: str) -> list:
         """Get all clips directories for a video."""
@@ -165,18 +169,19 @@ class VideoLibrary:
 
     def delete_video(self, video_id: str) -> bool:
         """Remove a video from the library (deletes files)."""
-        data = self._index["videos"].get(video_id)
-        if not data:
-            return False
+        with self._lock:
+            data = self._index["videos"].get(video_id)
+            if not data:
+                return False
 
-        video_dir = Path(data["directory"])
-        if video_dir.exists():
-            shutil.rmtree(str(video_dir), ignore_errors=True)
+            video_dir = Path(data["directory"])
+            if video_dir.exists():
+                shutil.rmtree(str(video_dir), ignore_errors=True)
 
-        del self._index["videos"][video_id]
-        self._save_index()
-        logger.info(f"Video removed from library: {video_id}")
-        return True
+            del self._index["videos"][video_id]
+            self._save_index()
+            logger.info(f"Video removed from library: {video_id}")
+            return True
 
     def get_library_stats(self) -> dict:
         """Get library statistics."""

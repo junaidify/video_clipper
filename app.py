@@ -28,7 +28,8 @@ from analyzer import ContentAnalyzer, ClipCandidate
 from clipper import VideoClipper
 from downloader import (is_valid_url, is_drm_platform, download_video,
                         get_video_info, get_supported_platforms,
-                        _get_cookies_config, _is_running_locally, _detect_browser)
+                        _get_cookies_config, _get_cookies_config_with_fallback,
+                        _is_running_locally, _detect_browser)
 from llm_analyzer import analyze_with_llm, LLMConfig
 from library import VideoLibrary
 from manual_clipper import TimestampClip, parse_timestamp, split_by_timestamps
@@ -48,8 +49,9 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'video-clipper-dev-key')
 
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm', 'flv', 'wmv', 'm4v'}
 
-# In-memory job tracker
+# In-memory job tracker (thread-safe via lock)
 jobs = {}
+jobs_lock = threading.Lock()
 
 # Persistent modules
 video_library = VideoLibrary(app.config['LIBRARY_FOLDER'])
@@ -908,6 +910,7 @@ def get_clip_frames():
 
     try:
         import base64 as b64mod
+        import tempfile
         # Get duration
         probe_cmd = [
             "ffprobe", "-v", "quiet",
@@ -1084,6 +1087,46 @@ def cookie_diagnostic():
     result['active_config'] = cookies_config if cookies_config else 'none'
 
     return jsonify(result)
+
+
+@app.route('/api/upload-cookies', methods=['POST'])
+def upload_cookies():
+    """Upload a cookies.txt file for YouTube authentication."""
+    if 'cookie_file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['cookie_file']
+    if not file.filename:
+        return jsonify({'error': 'No file selected'}), 400
+
+    content = file.read().decode('utf-8', errors='replace')
+
+    # Basic validation
+    if len(content.strip()) < 50:
+        return jsonify({'error': 'File is too small to be a valid cookie file'}), 400
+
+    # Check for YouTube/Google cookies
+    lines = content.strip().split('\n')
+    yt_entries = [l for l in lines if l.strip() and not l.startswith('#')
+                  and ('youtube' in l.lower() or 'google' in l.lower())]
+
+    if not yt_entries:
+        return jsonify({'error': 'No YouTube/Google cookies found in this file. '
+                                 'Make sure you export cookies while on youtube.com.'}), 400
+
+    # Save to project root as cookies.txt
+    cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+    with open(cookie_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+    logger.info(f"Cookie file uploaded: {len(yt_entries)} YouTube entries, "
+                f"{len(lines)} total lines, saved to {cookie_path}")
+
+    return jsonify({
+        'success': True,
+        'youtube_entries': len(yt_entries),
+        'total_lines': len(lines),
+    })
 
 
 # ═══════════════════════════════════════════════════
