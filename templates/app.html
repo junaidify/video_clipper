@@ -545,6 +545,37 @@
             color: var(--white);
             background: #2a2a2a;
         }
+        .btn-yt {
+            background: #cc0000;
+            color: #fff;
+            border: 1px solid #cc0000;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.82rem;
+            padding: 8px 18px;
+        }
+        .btn-yt:hover { background: #e60000; border-color: #e60000; }
+        .btn-yt:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-yt svg { flex-shrink: 0; }
+        .yt-upload-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 14px; background: var(--bg-elevated);
+            border: 1px solid var(--border); border-radius: 8px;
+            margin-bottom: 8px; font-size: 0.84rem;
+        }
+        .yt-upload-item .yt-fname { flex: 1; color: var(--text-secondary); font-family: var(--mono); font-size: 0.78rem; }
+        .yt-upload-item .yt-status-tag { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; }
+        .yt-upload-item a { color: var(--lime); text-decoration: none; font-family: var(--mono); font-size: 0.78rem; }
+        .yt-upload-item a:hover { text-decoration: underline; }
+        .yt-connect-box {
+            display: flex; align-items: center; gap: 14px; padding: 16px;
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 10px; margin-bottom: 16px;
+        }
+        .yt-connect-box .yt-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .yt-connect-box .yt-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .yt-connect-box .yt-dot.disconnected { background: #666; }
         .btn-sm { padding: 10px 20px; font-size: 0.84rem; }
         .btn-full {
             width: 100%;
@@ -1496,7 +1527,12 @@
             </div>
 
             <div id="smart-results" style="display:none">
-                <div class="results-heading">GENERATED CLIPS <span class="tag tag-lime" id="smart-clip-count"></span></div>
+                <div class="results-heading" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                    <span>GENERATED CLIPS <span class="tag tag-lime" id="smart-clip-count"></span></span>
+                    <button class="btn btn-yt" id="smart-yt-btn" onclick="openYoutubeUpload('smart')" style="display:none">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg> Upload All to YouTube
+                    </button>
+                </div>
                 <div id="smart-clips-grid" class="card-grid"></div>
             </div>
         </div>
@@ -1530,7 +1566,12 @@
             <button class="btn btn-primary btn-full reveal reveal-d3" onclick="startManualSplit()">Split at Timestamps</button>
             <div class="error-box" id="manual-error"></div>
             <div id="manual-results" style="display:none">
-                <div class="results-heading">RESULTS <span class="tag tag-green" id="manual-count"></span></div>
+                <div class="results-heading" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                    <span>RESULTS <span class="tag tag-green" id="manual-count"></span></span>
+                    <button class="btn btn-yt" id="manual-yt-btn" onclick="openYoutubeUpload('manual')" style="display:none">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg> Upload All to YouTube
+                    </button>
+                </div>
                 <div id="manual-clips" class="card-grid"></div>
             </div>
         </div>
@@ -1569,7 +1610,12 @@
                 <div style="margin-top:6px;font-size:0.72rem;color:var(--text-ghost);font-family:var(--mono)" id="seq-elapsed"></div>
             </div>
             <div id="seq-results" style="display:none">
-                <div class="results-heading">REELS <span class="tag tag-purple" id="seq-count"></span></div>
+                <div class="results-heading" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                    <span>REELS <span class="tag tag-purple" id="seq-count"></span></span>
+                    <button class="btn btn-yt" id="seq-yt-btn" onclick="openYoutubeUpload('sequential')" style="display:none">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg> Upload All to YouTube
+                    </button>
+                </div>
                 <div id="seq-clips" class="card-grid"></div>
             </div>
         </div>
@@ -1763,6 +1809,205 @@
             </div>
             <div id="thumb-download" style="display:none;margin-top:14px">
                 <a class="btn-download" id="thumb-download-link" href="" download>Download Thumbnail</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ YouTube Upload Modal ═══ -->
+<div class="modal-overlay" id="yt-upload-modal">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-header">
+            <h3 style="display:flex;align-items:center;gap:10px">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="#cc0000"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+                UPLOAD TO YOUTUBE
+            </h3>
+            <button class="modal-close" onclick="closeYoutubeUpload()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="yt-connect-box" id="yt-connect-box">
+                <div class="yt-dot disconnected" id="yt-connect-dot"></div>
+                <div style="flex:1">
+                    <div id="yt-connect-label" style="font-size:0.88rem;color:var(--text-secondary)">Checking...</div>
+                    <div id="yt-connect-sub" style="font-size:0.76rem;color:var(--text-ghost);margin-top:2px"></div>
+                </div>
+                <button class="btn btn-sm" id="yt-connect-btn" onclick="connectYoutube()" style="display:none">Connect</button>
+                <button class="btn btn-sm btn-secondary" id="yt-disconnect-btn" onclick="disconnectYoutube()" style="display:none;font-size:0.72rem;padding:4px 10px">Disconnect</button>
+            </div>
+            <div id="yt-upload-settings" style="display:none">
+                <div style="display:flex;gap:12px;margin-bottom:14px">
+                    <div class="form-group" style="flex:1">
+                        <label>PRIVACY</label>
+                        <select id="yt-privacy" class="select-input">
+                            <option value="private">Private</option>
+                            <option value="unlisted" selected>Unlisted</option>
+                            <option value="public">Public</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label>CATEGORY</label>
+                        <select id="yt-category" class="select-input">
+                            <option value="entertainment">Entertainment</option>
+                            <option value="education">Education</option>
+                            <option value="comedy">Comedy</option>
+                            <option value="music">Music</option>
+                            <option value="gaming">Gaming</option>
+                            <option value="sports">Sports</option>
+                            <option value="howto">How-to & Style</option>
+                            <option value="people">People & Blogs</option>
+                            <option value="news">News</option>
+                            <option value="science">Science & Tech</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:14px">
+                    <label>EXTRA TAGS <span style="font-weight:400;color:var(--text-ghost)">(comma separated)</span></label>
+                    <input type="text" id="yt-tags" placeholder="shorts, clips, viral" style="font-size:0.84rem">
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+                    <input type="checkbox" id="yt-kids" style="width:auto">
+                    <label for="yt-kids" style="font-size:0.82rem;color:var(--text-dim);cursor:pointer;margin:0">Made for Kids (COPPA)</label>
+                </div>
+                <div id="yt-clip-count" style="font-size:0.84rem;color:var(--text-dim);margin-bottom:12px"></div>
+                <button class="btn btn-yt btn-full" id="yt-start-upload-btn" onclick="startYoutubeUpload()">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+                    Upload All Clips
+                </button>
+            </div>
+            <div id="yt-upload-progress" style="display:none">
+                <div class="progress-wrap" style="margin-bottom:14px">
+                    <div class="progress-bar"><div class="progress-fill" id="yt-progress-fill" style="width:0%"></div></div>
+                    <div class="progress-label" id="yt-progress-label">Starting...</div>
+                </div>
+                <div id="yt-upload-results"></div>
+            </div>
+            <div id="yt-not-configured" style="display:none;text-align:center;padding:20px 0">
+                <p style="color:var(--text-dim);font-size:0.88rem;line-height:1.7">
+                    YouTube upload requires <code style="background:var(--bg-elevated);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border)">GOOGLE_CLIENT_ID</code> and
+                    <code style="background:var(--bg-elevated);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border)">GOOGLE_CLIENT_SECRET</code> in your <code style="background:var(--bg-elevated);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border)">.env</code> file.
+                </p>
+                <p style="color:var(--text-ghost);font-size:0.78rem;margin-top:10px">
+                    Get them from Google Cloud Console &rarr; APIs &amp; Services &rarr; Credentials &rarr; OAuth 2.0 Client ID
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Single Clip YouTube Upload Preview Modal ── -->
+<div class="modal-overlay" id="yt-single-modal">
+    <div class="modal" style="max-width:580px">
+        <div class="modal-header">
+            <h3 style="display:flex;align-items:center;gap:10px">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="#cc0000"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+                UPLOAD PREVIEW
+            </h3>
+            <button class="modal-close" onclick="closeSingleYtModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <!-- File info -->
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--text-dim)" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10,8 16,12 10,16" fill="var(--text-dim)" stroke="none"/></svg>
+                <span id="yts-filename" style="font-family:var(--mono);font-size:0.82rem;color:var(--text-secondary);word-break:break-all"></span>
+            </div>
+
+            <!-- AI Generate button -->
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+                <button class="btn btn-sm" id="yts-ai-btn" onclick="generateAiMetadata()" style="background:linear-gradient(135deg,#4285f4,#ab47bc);color:#fff;border:none;font-size:0.78rem;padding:6px 14px;border-radius:6px;display:flex;align-items:center;gap:6px">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z"/></svg>
+                    Generate with AI
+                </button>
+                <span id="yts-ai-status" style="font-size:0.74rem;color:var(--text-ghost)"></span>
+            </div>
+
+            <!-- Title -->
+            <div class="form-group" style="margin-bottom:14px">
+                <label>TITLE</label>
+                <input type="text" id="yts-title" maxlength="100" placeholder="Enter a catchy title..." style="font-size:0.86rem">
+                <div style="text-align:right;font-size:0.7rem;color:var(--text-ghost);margin-top:3px"><span id="yts-title-count">0</span>/100</div>
+            </div>
+
+            <!-- Description -->
+            <div class="form-group" style="margin-bottom:14px">
+                <label>DESCRIPTION</label>
+                <textarea id="yts-description" rows="4" maxlength="5000" placeholder="Describe your video..." style="font-size:0.84rem;resize:vertical;min-height:80px;font-family:inherit"></textarea>
+                <div style="text-align:right;font-size:0.7rem;color:var(--text-ghost);margin-top:3px"><span id="yts-desc-count">0</span>/5000</div>
+            </div>
+
+            <!-- Tags -->
+            <div class="form-group" style="margin-bottom:14px">
+                <label>TAGS <span style="font-weight:400;color:var(--text-ghost)">(comma separated)</span></label>
+                <input type="text" id="yts-tags" placeholder="shorts, viral, trending" style="font-size:0.84rem">
+            </div>
+
+            <!-- Privacy + Category row -->
+            <div style="display:flex;gap:12px;margin-bottom:14px">
+                <div class="form-group" style="flex:1">
+                    <label>PRIVACY</label>
+                    <select id="yts-privacy" class="select-input" onchange="onYtsPrivacyChange()">
+                        <option value="private">Private</option>
+                        <option value="unlisted" selected>Unlisted</option>
+                        <option value="public">Public</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label>CATEGORY</label>
+                    <select id="yts-category" class="select-input">
+                        <option value="entertainment">Entertainment</option>
+                        <option value="education">Education</option>
+                        <option value="comedy">Comedy</option>
+                        <option value="music">Music</option>
+                        <option value="gaming">Gaming</option>
+                        <option value="sports">Sports</option>
+                        <option value="howto">How-to & Style</option>
+                        <option value="people">People & Blogs</option>
+                        <option value="news">News</option>
+                        <option value="science">Science & Tech</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Schedule toggle -->
+            <div id="yts-schedule-section" style="margin-bottom:18px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                    <input type="checkbox" id="yts-schedule-toggle" style="width:auto" onchange="onScheduleToggle()">
+                    <label for="yts-schedule-toggle" style="font-size:0.84rem;color:var(--text-secondary);cursor:pointer;margin:0;display:flex;align-items:center;gap:6px">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Schedule for later
+                    </label>
+                </div>
+                <div id="yts-schedule-picker" style="display:none;padding:12px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px">
+                    <div style="display:flex;gap:12px;align-items:end">
+                        <div class="form-group" style="flex:1;margin:0">
+                            <label style="font-size:0.72rem">DATE</label>
+                            <input type="date" id="yts-schedule-date" style="font-size:0.84rem">
+                        </div>
+                        <div class="form-group" style="flex:1;margin:0">
+                            <label style="font-size:0.72rem">TIME</label>
+                            <input type="time" id="yts-schedule-time" value="12:00" style="font-size:0.84rem">
+                        </div>
+                    </div>
+                    <div style="font-size:0.72rem;color:var(--text-ghost);margin-top:8px">
+                        Video uploads as private and auto-publishes at the scheduled time (your local timezone)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload / Schedule button -->
+            <button class="btn btn-yt btn-full" id="yts-upload-btn" onclick="confirmSingleUpload()" style="font-size:0.92rem;padding:12px 0">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+                <span id="yts-upload-btn-text">Upload to YouTube</span>
+            </button>
+
+            <!-- Upload progress (shown during upload) -->
+            <div id="yts-uploading" style="display:none;text-align:center;padding:20px 0">
+                <svg viewBox="0 0 24 24" width="32" height="32" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="#cc0000" fill="none" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
+                <div style="margin-top:10px;font-size:0.88rem;color:var(--text-dim)">Uploading to YouTube...</div>
+            </div>
+
+            <!-- Upload result -->
+            <div id="yts-result" style="display:none;text-align:center;padding:20px 0">
+                <div id="yts-result-content"></div>
             </div>
         </div>
     </div>
@@ -2062,9 +2307,12 @@ function updateSmartSteps(status) {
 }
 
 function showSmartResults(clips, jobId) {
+    currentSmartJob = jobId;
     document.getElementById('smart-results').style.display = 'block';
     document.getElementById('smart-clip-count').textContent = clips.length + ' clips';
     document.getElementById('smart-clips-grid').innerHTML = clips.map(c => clipCardHtml(c, jobId)).join('');
+    document.getElementById('smart-yt-btn').style.display = 'inline-flex';
+    checkYoutubeStatus();
 }
 
 // Manual Split
@@ -2106,9 +2354,12 @@ async function startManualSplit() {
 }
 
 function showManualResults(results, jobId) {
+    window._lastManualJobId = jobId;
     const ok = results.filter(r => r.success);
     document.getElementById('manual-results').style.display = 'block';
     document.getElementById('manual-count').textContent = ok.length + ' clips';
+    document.getElementById('manual-yt-btn').style.display = 'inline-flex';
+    checkYoutubeStatus();
     document.getElementById('manual-clips').innerHTML = ok.map(r => `
         <div class="clip-card">
             <video class="clip-video" controls preload="metadata"><source src="/clips/${jobId}/${r.filename}" type="video/mp4"></video>
@@ -2179,8 +2430,11 @@ async function startSequentialSplit() {
 }
 
 function showSeqResults(reels, jobId) {
+    window._lastSeqJobId = jobId;
     document.getElementById('seq-results').style.display = 'block';
     document.getElementById('seq-count').textContent = reels.length + ' reels';
+    document.getElementById('seq-yt-btn').style.display = 'inline-flex';
+    checkYoutubeStatus();
     document.getElementById('seq-clips').innerHTML = reels.map(r => `
         <div class="clip-card">
             <video class="clip-video" controls preload="metadata"><source src="/clips/${jobId}/${r.filename}" type="video/mp4"></video>
@@ -2359,6 +2613,10 @@ async function openFolder(idx) {
                                 <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                                 Thumb
                             </button>
+                            <button class="clip-act-btn clip-yt-btn" onclick="uploadSingleToYoutube('${jobId}','${f.filename}',this)" style="font-size:0.72rem;padding:6px 12px" title="Upload to YouTube">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="#cc0000" style="vertical-align:-2px"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+                                YouTube
+                            </button>
                         </div>
                     </div>
                 `;
@@ -2366,13 +2624,20 @@ async function openFolder(idx) {
         } catch(e) {}
     }
 
+    // Build "Upload All" button (uses first jobId for batch)
+    var ytAllBtn = '';
+    if (folder.jobIds.length > 0) {
+        ytAllBtn = '<button class="btn btn-yt" onclick="openOutputYoutubeUpload(' + idx + ')" style="font-size:0.78rem;padding:6px 14px;margin-left:auto"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg> Upload All to YouTube</button>';
+    }
+
     list.innerHTML = `
-        <div class="folder-open-header">
+        <div class="folder-open-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:10px">
             <div class="folder-open-back" onclick="renderFolderGrid()" title="Back to folders">
                 <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
             </div>
             <div class="folder-open-title">${escHtml(folder.title)}</div>
             <div class="folder-open-count">${folder.totalClips} clip${folder.totalClips!==1?'s':''}</div>
+            ${ytAllBtn}
         </div>
         <div class="output-clips-grid">${clipsHtml || '<div style="text-align:center;color:var(--text-dim);padding:30px;grid-column:1/-1">No clips found.</div>'}</div>
     `;
@@ -2396,6 +2661,10 @@ function clipActionsHtml(jobId, filename) {
         <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(filename)}','_blank')">
             <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
             Thumbnail
+        </button>
+        <button class="clip-act-btn clip-yt-btn" onclick="uploadSingleToYoutube('${jobId}','${filename}',this)" title="Upload to YouTube">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="#cc0000" style="vertical-align:-2px"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+            YouTube
         </button>
     </div>`;
 }
@@ -2751,11 +3020,425 @@ async function uploadCookieFile(input) {
     } catch(e) { showErr('cookie-error', e.message); }
 }
 
+// ═══════════════════════════════════════
+//  YOUTUBE UPLOAD
+// ═══════════════════════════════════════
+let ytCurrentJobId = null;
+let ytCurrentSource = null;
+let ytCurrentClipsMeta = [];
+let ytUploadPoll = null;
+
+async function checkYoutubeStatus() {
+    try {
+        const res = await fetch('/api/youtube/status');
+        const data = await res.json();
+        const btns = document.querySelectorAll('.btn-yt');
+        btns.forEach(btn => {
+            if (!btn.id.includes('start-upload') && !btn.id.includes('yt-start')) {
+                btn.style.display = data.configured ? 'inline-flex' : 'none';
+            }
+        });
+        return data;
+    } catch(e) { return {configured: false, authenticated: false}; }
+}
+
+function openYoutubeUpload(source) {
+    ytCurrentSource = source;
+    if (source === 'smart') ytCurrentJobId = currentSmartJob;
+    else if (source === 'manual') ytCurrentJobId = window._lastManualJobId;
+    else if (source === 'sequential') ytCurrentJobId = window._lastSeqJobId;
+    if (!ytCurrentJobId) { alert('No clips available. Generate clips first.'); return; }
+    document.getElementById('yt-upload-modal').classList.add('active');
+    document.getElementById('yt-upload-settings').style.display = 'none';
+    document.getElementById('yt-upload-progress').style.display = 'none';
+    document.getElementById('yt-not-configured').style.display = 'none';
+    refreshYoutubeConnect();
+}
+
+async function refreshYoutubeConnect() {
+    const data = await checkYoutubeStatus();
+    const dot = document.getElementById('yt-connect-dot');
+    const label = document.getElementById('yt-connect-label');
+    const sub = document.getElementById('yt-connect-sub');
+    const connectBtn = document.getElementById('yt-connect-btn');
+    const disconnectBtn = document.getElementById('yt-disconnect-btn');
+    const settings = document.getElementById('yt-upload-settings');
+    const notConfigured = document.getElementById('yt-not-configured');
+    if (!data.configured) {
+        dot.className = 'yt-dot disconnected';
+        label.textContent = 'Not Configured';
+        sub.textContent = 'Add credentials to .env file';
+        connectBtn.style.display = 'none';
+        disconnectBtn.style.display = 'none';
+        settings.style.display = 'none';
+        notConfigured.style.display = 'block';
+        return;
+    }
+    notConfigured.style.display = 'none';
+    if (data.authenticated) {
+        dot.className = 'yt-dot connected';
+        label.textContent = 'YouTube Connected';
+        sub.textContent = 'Ready to upload';
+        connectBtn.style.display = 'none';
+        disconnectBtn.style.display = 'inline-flex';
+        settings.style.display = 'block';
+        try {
+            const res = await fetch('/api/clips/list/' + ytCurrentJobId);
+            const clipData = await res.json();
+            const count = (clipData.files || []).filter(function(f) {
+                return !f.filename.includes('_subtitled') && !f.filename.includes('_overlay') && !f.filename.includes('_thumb_');
+            }).length;
+            document.getElementById('yt-clip-count').textContent = count + ' clip' + (count !== 1 ? 's' : '') + ' ready to upload';
+        } catch(e) {}
+    } else {
+        dot.className = 'yt-dot disconnected';
+        label.textContent = 'Not Connected';
+        sub.textContent = 'Sign in with Google to upload';
+        connectBtn.style.display = 'inline-flex';
+        disconnectBtn.style.display = 'none';
+        settings.style.display = 'none';
+    }
+}
+
+function connectYoutube() {
+    fetch('/api/youtube/auth')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) { alert(data.error); return; }
+            var popup = window.open(data.auth_url, 'youtube_auth', 'width=600,height=700');
+            window.addEventListener('message', function handler(e) {
+                if (e.data && e.data.type === 'youtube_auth_done') {
+                    window.removeEventListener('message', handler);
+                    refreshYoutubeConnect();
+                }
+            });
+            var checkInterval = setInterval(function() {
+                if (popup && popup.closed) { clearInterval(checkInterval); refreshYoutubeConnect(); }
+            }, 2000);
+        })
+        .catch(function(e) { alert('Auth error: ' + e.message); });
+}
+
+async function disconnectYoutube() {
+    await fetch('/api/youtube/disconnect', {method:'POST'});
+    refreshYoutubeConnect();
+}
+
+function closeYoutubeUpload() {
+    document.getElementById('yt-upload-modal').classList.remove('active');
+    if (ytUploadPoll) { clearInterval(ytUploadPoll); ytUploadPoll = null; }
+}
+
+async function startYoutubeUpload() {
+    var btn = document.getElementById('yt-start-upload-btn');
+    btn.disabled = true;
+    var privacy = document.getElementById('yt-privacy').value;
+    var category = document.getElementById('yt-category').value;
+    var tagsRaw = document.getElementById('yt-tags').value;
+    var tags = tagsRaw ? tagsRaw.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
+    var madeForKids = document.getElementById('yt-kids').checked;
+    var sourceTitle = '';
+    var sel = document.querySelector('#lib-grid .lib-card.selected .lc-title');
+    if (sel) sourceTitle = sel.textContent || '';
+    try {
+        var res = await fetch('/api/youtube/upload', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                job_id: ytCurrentJobId, privacy: privacy, category: category, tags: tags,
+                made_for_kids: madeForKids, source_title: sourceTitle, clips: ytCurrentClipsMeta
+            })
+        });
+        var data = await res.json();
+        if (data.error) { alert(data.error); btn.disabled = false; return; }
+        document.getElementById('yt-upload-settings').style.display = 'none';
+        document.getElementById('yt-upload-progress').style.display = 'block';
+        var uploadJobId = data.upload_job_id;
+        ytUploadPoll = setInterval(function() { pollYoutubeUpload(uploadJobId); }, 1500);
+        pollYoutubeUpload(uploadJobId);
+    } catch(e) { alert('Upload error: ' + e.message); btn.disabled = false; }
+}
+
+async function pollYoutubeUpload(uploadJobId) {
+    try {
+        var res = await fetch('/api/status/' + uploadJobId);
+        var data = await res.json();
+        var fill = document.getElementById('yt-progress-fill');
+        var label = document.getElementById('yt-progress-label');
+        fill.style.width = (data.progress || 0) + '%';
+        label.textContent = data.message || 'Uploading...';
+        var results = data.results || [];
+        var html = '';
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            html += '<div class="yt-upload-item">';
+            html += '<span class="yt-fname">' + escHtml(r.filename) + '</span>';
+            if (r.success) {
+                html += '<span class="yt-status-tag" style="background:var(--green);color:#000">Uploaded</span>';
+                html += '<a href="' + r.video_url + '" target="_blank">' + r.video_url + '</a>';
+            } else if (r.error) {
+                html += '<span class="yt-status-tag" style="background:#f87171;color:#000">Failed</span>';
+                html += '<span style="color:var(--text-ghost);font-size:0.72rem">' + escHtml(r.error).substring(0,60) + '</span>';
+            } else {
+                html += '<span class="yt-status-tag" style="background:var(--bg-main);color:var(--text-ghost)">Pending</span>';
+            }
+            html += '</div>';
+        }
+        document.getElementById('yt-upload-results').innerHTML = html;
+        if (data.status === 'completed' || data.status === 'error') {
+            clearInterval(ytUploadPoll);
+            ytUploadPoll = null;
+            document.getElementById('yt-start-upload-btn').disabled = false;
+            if (data.status === 'completed') {
+                fill.style.width = '100%';
+                fill.style.background = 'var(--green)';
+                label.textContent = data.message;
+            } else if (data.error) {
+                fill.style.background = '#f87171';
+                label.textContent = data.error;
+            }
+        }
+    } catch(e) { console.error('YouTube upload poll error', e); }
+}
+
+window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'youtube_auth_done') refreshYoutubeConnect();
+});
+
+function openOutputYoutubeUpload(folderIdx) {
+    var folder = _outputFolders[folderIdx];
+    if (!folder || !folder.jobIds.length) { alert('No clips in this folder.'); return; }
+    // Use the first jobId for upload (most common case: single session per video)
+    ytCurrentJobId = folder.jobIds[0];
+    ytCurrentSource = 'output';
+    document.getElementById('yt-upload-modal').classList.add('active');
+    document.getElementById('yt-upload-settings').style.display = 'none';
+    document.getElementById('yt-upload-progress').style.display = 'none';
+    document.getElementById('yt-not-configured').style.display = 'none';
+    refreshYoutubeConnect();
+}
+
+// ── Single Clip YouTube Upload Preview ──
+var _ytsJobId = '', _ytsFilename = '', _ytsBtn = null;
+
+async function uploadSingleToYoutube(jobId, filename, btn) {
+    var status = await checkYoutubeStatus();
+    if (!status.configured) {
+        alert('YouTube upload requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your .env file.');
+        return;
+    }
+    if (!status.authenticated) {
+        ytCurrentJobId = jobId;
+        document.getElementById('yt-upload-modal').classList.add('active');
+        document.getElementById('yt-upload-settings').style.display = 'none';
+        document.getElementById('yt-upload-progress').style.display = 'none';
+        document.getElementById('yt-not-configured').style.display = 'none';
+        refreshYoutubeConnect();
+        return;
+    }
+
+    // Store context for later upload
+    _ytsJobId = jobId;
+    _ytsFilename = filename;
+    _ytsBtn = btn;
+
+    // Reset modal state
+    document.getElementById('yts-filename').textContent = filename;
+    document.getElementById('yts-title').value = '';
+    document.getElementById('yts-description').value = '';
+    document.getElementById('yts-tags').value = '';
+    document.getElementById('yts-privacy').value = 'unlisted';
+    document.getElementById('yts-category').value = 'entertainment';
+    document.getElementById('yts-title-count').textContent = '0';
+    document.getElementById('yts-desc-count').textContent = '0';
+    document.getElementById('yts-ai-status').textContent = '';
+    document.getElementById('yts-upload-btn').style.display = '';
+    document.getElementById('yts-upload-btn-text').textContent = 'Upload to YouTube';
+    document.getElementById('yts-uploading').style.display = 'none';
+    document.getElementById('yts-result').style.display = 'none';
+    document.getElementById('yts-ai-btn').disabled = false;
+    // Reset schedule
+    document.getElementById('yts-schedule-toggle').checked = false;
+    document.getElementById('yts-schedule-picker').style.display = 'none';
+    // Default schedule date to tomorrow
+    var tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('yts-schedule-date').value = tomorrow.toISOString().split('T')[0];
+    document.getElementById('yts-schedule-time').value = '12:00';
+
+    // Show modal
+    document.getElementById('yt-single-modal').classList.add('active');
+
+    // Auto-generate metadata with AI
+    generateAiMetadata();
+}
+
+function closeSingleYtModal() {
+    document.getElementById('yt-single-modal').classList.remove('active');
+}
+
+async function generateAiMetadata() {
+    var btn = document.getElementById('yts-ai-btn');
+    var statusEl = document.getElementById('yts-ai-status');
+    btn.disabled = true;
+    statusEl.textContent = 'Generating...';
+    statusEl.style.color = 'var(--accent)';
+
+    try {
+        var res = await fetch('/api/youtube/generate-metadata', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: _ytsJobId, filename: _ytsFilename })
+        });
+        var data = await res.json();
+        if (data.error) {
+            statusEl.textContent = 'Failed: ' + data.error;
+            statusEl.style.color = 'var(--red)';
+        } else {
+            document.getElementById('yts-title').value = data.title || '';
+            document.getElementById('yts-description').value = data.description || '';
+            document.getElementById('yts-tags').value = (data.tags || []).join(', ');
+            document.getElementById('yts-title-count').textContent = (data.title || '').length;
+            document.getElementById('yts-desc-count').textContent = (data.description || '').length;
+            statusEl.textContent = data.ai_generated ? 'AI generated' : 'Basic metadata';
+            statusEl.style.color = data.ai_generated ? 'var(--green)' : 'var(--text-ghost)';
+            if (data.warning) {
+                statusEl.textContent += ' — ' + data.warning;
+                statusEl.style.color = 'var(--orange, #e8a838)';
+            }
+        }
+    } catch(e) {
+        statusEl.textContent = 'Error: ' + e.message;
+        statusEl.style.color = 'var(--red)';
+    }
+    btn.disabled = false;
+}
+
+// Live char counters
+document.addEventListener('DOMContentLoaded', function() {
+    var titleInput = document.getElementById('yts-title');
+    var descInput = document.getElementById('yts-description');
+    if (titleInput) titleInput.addEventListener('input', function() {
+        document.getElementById('yts-title-count').textContent = this.value.length;
+    });
+    if (descInput) descInput.addEventListener('input', function() {
+        document.getElementById('yts-desc-count').textContent = this.value.length;
+    });
+});
+
+function onScheduleToggle() {
+    var checked = document.getElementById('yts-schedule-toggle').checked;
+    document.getElementById('yts-schedule-picker').style.display = checked ? '' : 'none';
+    document.getElementById('yts-upload-btn-text').textContent = checked ? 'Schedule Upload' : 'Upload to YouTube';
+}
+
+function onYtsPrivacyChange() {
+    // If scheduling is on, privacy is forced to private (YouTube requirement) — just inform via the note
+}
+
+async function confirmSingleUpload() {
+    var title = document.getElementById('yts-title').value.trim();
+    if (!title) { alert('Please enter a title before uploading.'); return; }
+
+    var description = document.getElementById('yts-description').value.trim();
+    var tagsRaw = document.getElementById('yts-tags').value.trim();
+    var tags = tagsRaw ? tagsRaw.split(',').map(function(t){ return t.trim(); }).filter(Boolean) : [];
+    var privacy = document.getElementById('yts-privacy').value;
+    var category = document.getElementById('yts-category').value;
+
+    // Build schedule_at ISO string if scheduling is enabled
+    var scheduleAt = '';
+    var isScheduled = document.getElementById('yts-schedule-toggle').checked;
+    if (isScheduled) {
+        var dateVal = document.getElementById('yts-schedule-date').value;
+        var timeVal = document.getElementById('yts-schedule-time').value;
+        if (!dateVal || !timeVal) {
+            alert('Please select both date and time for scheduling.');
+            return;
+        }
+        // Combine date + time into a local datetime, then convert to ISO UTC
+        var localDt = new Date(dateVal + 'T' + timeVal);
+        if (localDt <= new Date()) {
+            alert('Scheduled time must be in the future.');
+            return;
+        }
+        scheduleAt = localDt.toISOString();
+    }
+
+    // Switch to uploading state
+    document.getElementById('yts-upload-btn').style.display = 'none';
+    document.getElementById('yts-uploading').style.display = '';
+    var uploadMsg = document.getElementById('yts-uploading').querySelector('div');
+    if (uploadMsg) uploadMsg.textContent = isScheduled ? 'Uploading & scheduling...' : 'Uploading to YouTube...';
+
+    try {
+        var payload = {
+            job_id: _ytsJobId,
+            filename: _ytsFilename,
+            title: title,
+            description: description,
+            tags: tags,
+            privacy: privacy,
+            category: category
+        };
+        if (scheduleAt) payload.schedule_at = scheduleAt;
+
+        var res = await fetch('/api/youtube/upload-single', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        var data = await res.json();
+        document.getElementById('yts-uploading').style.display = 'none';
+        document.getElementById('yts-result').style.display = '';
+
+        if (data.error) {
+            document.getElementById('yts-result-content').innerHTML =
+                '<div style="color:var(--red);font-size:0.9rem;margin-bottom:10px">Upload Failed</div>' +
+                '<div style="color:var(--text-dim);font-size:0.82rem">' + data.error + '</div>' +
+                '<button class="btn btn-sm" onclick="document.getElementById(\'yts-result\').style.display=\'none\';document.getElementById(\'yts-upload-btn\').style.display=\'\'" style="margin-top:14px">Try Again</button>';
+        } else {
+            var successMsg = data.scheduled_at
+                ? '<div style="color:var(--green);font-size:0.94rem;margin:10px 0 4px;font-weight:600">Scheduled Successfully!</div>' +
+                  '<div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:6px">Publishes: ' + new Date(data.scheduled_at).toLocaleString() + '</div>'
+                : '<div style="color:var(--green);font-size:0.94rem;margin:10px 0 6px;font-weight:600">Uploaded Successfully!</div>';
+
+            document.getElementById('yts-result-content').innerHTML =
+                '<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="var(--green)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>' +
+                successMsg +
+                '<a href="' + data.video_url + '" target="_blank" style="color:#cc0000;font-size:0.84rem;text-decoration:underline">' + data.video_url + '</a>' +
+                '<br><button class="btn btn-sm btn-secondary" onclick="closeSingleYtModal()" style="margin-top:16px">Close</button>';
+
+            // Update the source button
+            if (_ytsBtn) {
+                var btnLabel = data.scheduled_at ? 'Scheduled!' : 'Uploaded!';
+                _ytsBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><polyline points="20 6 9 17 4 12" stroke="var(--green)" fill="none" stroke-width="2"/></svg> ' + btnLabel;
+                _ytsBtn.style.borderColor = 'var(--green)';
+                _ytsBtn.style.color = 'var(--green)';
+                _ytsBtn.disabled = true;
+                var link = document.createElement('a');
+                link.className = 'clip-act-btn';
+                link.href = data.video_url;
+                link.target = '_blank';
+                link.style.borderColor = '#cc0000';
+                link.style.color = '#cc0000';
+                link.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="#cc0000"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg> View';
+                _ytsBtn.parentElement.appendChild(link);
+            }
+        }
+    } catch(e) {
+        document.getElementById('yts-uploading').style.display = 'none';
+        document.getElementById('yts-upload-btn').style.display = '';
+        alert('Upload error: ' + e.message);
+    }
+}
+
 // Init
 loadLibrary();
 loadSettings();
 loadTrainingSessions();
 checkCookieStatus();
+checkYoutubeStatus();
 </script>
 </body>
 </html>

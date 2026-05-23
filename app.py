@@ -37,6 +37,7 @@ from sequential_clipper import SequentialConfig, split_sequentially
 from trainer import PatternTrainer
 from subtitle_generator import generate_subtitles, burn_subtitles, burn_text_overlay
 from thumbnail_generator import generate_template_thumbnail, generate_ai_thumbnail, pick_best_frame
+import youtube_uploader
 
 # ─── App Setup ───
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -1127,6 +1128,409 @@ def upload_cookies():
         'youtube_entries': len(yt_entries),
         'total_lines': len(lines),
     })
+
+
+# ═══════════════════════════════════════════════════
+#  YOUTUBE UPLOAD
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/youtube/status')
+def youtube_status():
+    """Check YouTube connection status."""
+    return jsonify({
+        'configured': youtube_uploader.is_configured(),
+        'authenticated': youtube_uploader.is_authenticated(),
+    })
+
+
+@app.route('/api/youtube/auth')
+def youtube_auth():
+    """Start OAuth2 flow — redirect user to Google consent screen."""
+    if not youtube_uploader.is_configured():
+        return jsonify({'error': 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not set in .env'}), 400
+    try:
+        redirect_uri = request.url_root.rstrip('/') + '/api/youtube/callback'
+        auth_url = youtube_uploader.get_auth_url(redirect_uri)
+        return jsonify({'auth_url': auth_url})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/youtube/callback')
+def youtube_callback():
+    """OAuth2 callback — exchange code for tokens."""
+    code = request.args.get('code')
+    error = request.args.get('error')
+    if error:
+        return f"""<html><body><h2>YouTube Auth Failed</h2><p>{error}</p>
+        <script>window.close();</script></body></html>"""
+    if not code:
+        return 'Missing authorization code', 400
+    try:
+        redirect_uri = request.url_root.rstrip('/') + '/api/youtube/callback'
+        youtube_uploader.handle_oauth_callback(code, redirect_uri)
+        return """<html><body style="background:#0a0a0a;color:#fff;font-family:system-ui;
+        display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+        <div style="text-align:center">
+        <h2 style="color:#a3e635">YouTube Connected!</h2>
+        <p>You can close this tab and return to CLIPPER.</p>
+        <script>
+            if(window.opener){window.opener.postMessage({type:'youtube_auth_done'},'*');}
+            setTimeout(()=>window.close(),2000);
+        </script></div></body></html>"""
+    except Exception as e:
+        logger.exception("YouTube OAuth callback failed")
+        return f"""<html><body><h2>Auth Error</h2><p>{e}</p>
+        <script>setTimeout(()=>window.close(),5000);</script></body></html>"""
+
+
+@app.route('/api/youtube/disconnect', methods=['POST'])
+def youtube_disconnect():
+    """Remove stored YouTube tokens."""
+    youtube_uploader.disconnect()
+    return jsonify({'success': True})
+
+
+@app.route('/api/youtube/generate-metadata', methods=['POST'])
+def youtube_generate_metadata():
+    """Use NVIDIA NIM (OpenAI-compatible) to generate optimized YouTube metadata for a clip."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+
+    if not job_id or not filename:
+        return jsonify({'error': 'Missing job_id or filename'}), 400
+
+    clip_dir = _find_job_dir(job_id)
+    clip_path = os.path.join(clip_dir, filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    # Try to get transcript/subtitle text for context
+    stem = Path(filename).stem
+    srt_path = os.path.join(clip_dir, f"{stem}.srt")
+    transcript_text = ''
+    if os.path.isfile(srt_path):
+        with open(srt_path, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+            text_lines = [l.strip() for l in lines
+                         if l.strip() and not l.strip().isdigit()
+                         and '-->' not in l]
+            transcript_text = ' '.join(text_lines)
+
+    # Get clip duration
+    duration = _get_video_duration(clip_path)
+
+    # Check for NVIDIA API key
+    llm_config = LLMConfig.from_env()
+    if not llm_config.nvidia_api_key:
+        # Fallback: generate basic metadata without AI
+        meta = youtube_uploader.generate_clip_metadata(
+            clip_info={'hook_text': transcript_text[:200], 'duration': duration},
+            source_title=filename,
+            clip_number=1, total_clips=1,
+        )
+        return jsonify({
+            'title': meta['title'],
+            'description': meta['description'],
+            'tags': meta['tags'],
+            'ai_generated': False,
+        })
+
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=llm_config.nvidia_api_key,
+        )
+
+        prompt = f"""You are a YouTube Shorts optimization expert. Generate metadata for a short video clip to MAXIMIZE reach, views, and engagement.
+
+Clip info:
+- Filename: {filename}
+- Duration: {int(duration)} seconds
+- Transcript/content: {transcript_text[:1500] if transcript_text else 'No transcript available. Generate based on filename.'}
+
+Generate the following in JSON format:
+{{
+    "title": "Catchy, click-worthy title (max 80 chars). Use power words, curiosity gaps, or emotional hooks. DO NOT use generic titles.",
+    "description": "Engaging description (max 300 chars). Include context, call to action, and relevant keywords. Add #Shorts at the end.",
+    "tags": ["tag1", "tag2", ...] (10-15 highly relevant tags for discoverability. Mix broad and niche tags.)
+}}
+
+Rules:
+- Title must be scroll-stopping and make people WANT to click
+- Tags should include trending/searchable terms related to the content
+- Description should feel natural, not spammy
+- Output ONLY valid JSON, nothing else"""
+
+        response = client.chat.completions.create(
+            model=llm_config.nvidia_model,
+            messages=[
+                {"role": "system", "content": "You are a viral content analyst and YouTube SEO expert. Respond only with valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            max_tokens=1024,
+        )
+
+        raw = response.choices[0].message.content.strip()
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3].strip()
+
+        result = json.loads(raw)
+        return jsonify({
+            'title': result.get('title', filename)[:100],
+            'description': result.get('description', '')[:5000],
+            'tags': result.get('tags', [])[:15],
+            'ai_generated': True,
+        })
+
+    except Exception as e:
+        logger.exception("NVIDIA metadata generation failed")
+        # Fallback to basic metadata
+        meta = youtube_uploader.generate_clip_metadata(
+            clip_info={'hook_text': transcript_text[:200], 'duration': duration},
+            source_title=filename,
+            clip_number=1, total_clips=1,
+        )
+        return jsonify({
+            'title': meta['title'],
+            'description': meta['description'],
+            'tags': meta['tags'],
+            'ai_generated': False,
+            'warning': f'NVIDIA NIM failed ({str(e)[:80]}), using basic metadata',
+        })
+
+
+@app.route('/api/youtube/upload-single', methods=['POST'])
+def youtube_upload_single():
+    """Upload a single clip to YouTube with user-approved metadata."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    privacy = data.get('privacy', 'unlisted')
+    category = data.get('category', 'entertainment')
+    custom_title = data.get('title', '').strip()
+    custom_description = data.get('description', '').strip()
+    custom_tags = data.get('tags', [])
+    schedule_at = data.get('schedule_at', '').strip()  # ISO 8601 datetime
+
+    if not job_id or not filename:
+        return jsonify({'error': 'Missing job_id or filename'}), 400
+
+    if not youtube_uploader.is_authenticated():
+        return jsonify({'error': 'YouTube not connected. Click "Connect YouTube" first.'}), 401
+
+    clip_dir = _find_job_dir(job_id)
+    file_path = os.path.join(clip_dir, filename)
+    if not os.path.isfile(file_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    # Use custom metadata from preview form, fallback to filename
+    title = custom_title or Path(filename).stem
+    description = custom_description or ''
+    tags = custom_tags if isinstance(custom_tags, list) else []
+
+    # Validate schedule_at if provided
+    publish_at = None
+    if schedule_at:
+        from datetime import datetime, timezone
+        try:
+            # Parse and ensure it's in the future
+            dt = datetime.fromisoformat(schedule_at.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            if dt <= now:
+                return jsonify({'error': 'Scheduled time must be in the future'}), 400
+            # Convert to ISO 8601 with Z suffix for YouTube API
+            publish_at = dt.strftime('%Y-%m-%dT%H:%M:%S.0Z')
+        except ValueError:
+            return jsonify({'error': 'Invalid schedule datetime format'}), 400
+
+    result = youtube_uploader.upload_video(
+        file_path=file_path,
+        title=title,
+        description=description,
+        tags=tags,
+        category=category,
+        privacy=privacy,
+        publish_at=publish_at,
+    )
+
+    if not result.success:
+        return jsonify({'error': result.error}), 500
+
+    # Upload subtitles if SRT exists
+    stem = Path(filename).stem
+    srt_path = os.path.join(clip_dir, f"{stem}.srt")
+    if os.path.isfile(srt_path) and result.video_id:
+        youtube_uploader.upload_caption(result.video_id, srt_path)
+
+    resp = {
+        'success': True,
+        'video_id': result.video_id,
+        'video_url': result.video_url,
+    }
+    if publish_at:
+        resp['scheduled_at'] = publish_at
+    return jsonify(resp)
+
+
+@app.route('/api/youtube/upload', methods=['POST'])
+def youtube_upload():
+    """Batch upload clips from a job to YouTube."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    privacy = data.get('privacy', 'private')
+    category = data.get('category', 'entertainment')
+    source_title = data.get('source_title', '')
+    custom_tags = data.get('tags', [])
+    made_for_kids = data.get('made_for_kids', False)
+    clips_meta = data.get('clips', [])  # optional per-clip overrides
+
+    if not job_id:
+        return jsonify({'error': 'Missing job_id'}), 400
+
+    if not youtube_uploader.is_authenticated():
+        return jsonify({'error': 'YouTube not connected. Click "Connect YouTube" first.'}), 401
+
+    # Find clip files
+    clip_dir = _find_job_dir(job_id)
+    if not os.path.isdir(clip_dir):
+        return jsonify({'error': 'Clip directory not found'}), 404
+
+    clip_files = sorted([
+        f for f in os.listdir(clip_dir)
+        if f.lower().endswith(('.mp4', '.webm', '.mov'))
+        and '_subtitled' not in f.lower()
+        and '_overlay' not in f.lower()
+        and '_thumb_' not in f.lower()
+    ])
+
+    if not clip_files:
+        return jsonify({'error': 'No clips found in this job'}), 404
+
+    # Start background upload job
+    upload_job_id = f"yt_{job_id}_{str(uuid.uuid4())[:4]}"
+    jobs[upload_job_id] = {
+        'status': 'uploading',
+        'progress': 0,
+        'message': f'Starting upload of {len(clip_files)} clips...',
+        'total': len(clip_files),
+        'uploaded': 0,
+        'results': [],
+        'error': None,
+    }
+
+    thread = threading.Thread(
+        target=_youtube_upload_job,
+        args=(upload_job_id, clip_dir, clip_files, privacy, category,
+              source_title, custom_tags, made_for_kids, clips_meta),
+        daemon=True,
+    )
+    thread.start()
+    return jsonify({'upload_job_id': upload_job_id, 'total': len(clip_files)})
+
+
+def _youtube_upload_job(upload_job_id, clip_dir, clip_files, privacy, category,
+                        source_title, custom_tags, made_for_kids, clips_meta):
+    """Background: upload all clips to YouTube one by one."""
+    total = len(clip_files)
+    results = []
+
+    for i, filename in enumerate(clip_files):
+        file_path = os.path.join(clip_dir, filename)
+        jobs[upload_job_id]['current_file'] = filename
+        jobs[upload_job_id]['message'] = f'Uploading {i+1}/{total}: {filename}'
+
+        # Get metadata — either from clips_meta or auto-generate
+        clip_info = {}
+        if clips_meta and i < len(clips_meta):
+            clip_info = clips_meta[i]
+
+        meta = youtube_uploader.generate_clip_metadata(
+            clip_info=clip_info,
+            source_title=source_title,
+            clip_number=i + 1,
+            total_clips=total,
+        )
+
+        # Allow custom tag override
+        if custom_tags:
+            meta['tags'] = list(set(meta['tags'] + custom_tags))[:15]
+
+        # Use custom title if provided in clip_info
+        title = clip_info.get('custom_title') or meta['title']
+        description = clip_info.get('custom_description') or meta['description']
+
+        def _progress(sent, total_bytes):
+            if total_bytes > 0:
+                file_pct = int((sent / total_bytes) * 100)
+                overall_pct = int(((i + file_pct / 100) / total) * 100)
+                jobs[upload_job_id]['progress'] = overall_pct
+                jobs[upload_job_id]['message'] = (
+                    f'Uploading {i+1}/{total}: {filename} ({file_pct}%)'
+                )
+
+        result = youtube_uploader.upload_video(
+            file_path=file_path,
+            title=title,
+            description=description,
+            tags=meta['tags'],
+            category=category,
+            privacy=privacy,
+            made_for_kids=made_for_kids,
+            progress_callback=_progress,
+        )
+
+        # Try uploading subtitles if SRT exists
+        if result.success and result.video_id:
+            stem = Path(filename).stem
+            srt_path = os.path.join(clip_dir, f"{stem}.srt")
+            if os.path.isfile(srt_path):
+                youtube_uploader.upload_caption(result.video_id, srt_path)
+                logger.info(f"Captions uploaded for {filename}")
+
+        results.append({
+            'filename': result.filename,
+            'success': result.success,
+            'video_id': result.video_id,
+            'video_url': result.video_url,
+            'error': result.error,
+        })
+
+        jobs[upload_job_id]['uploaded'] = i + 1
+        jobs[upload_job_id]['results'] = results
+
+        # If upload failed due to quota, stop
+        if result.error and 'quota' in result.error.lower():
+            jobs[upload_job_id]['status'] = 'error'
+            jobs[upload_job_id]['error'] = (
+                f'YouTube daily quota exceeded after {i+1} uploads. '
+                f'Try again tomorrow or request quota increase in Google Cloud Console.'
+            )
+            jobs[upload_job_id]['message'] = 'Quota exceeded'
+            return
+
+    success_count = sum(1 for r in results if r['success'])
+    fail_count = total - success_count
+
+    jobs[upload_job_id]['status'] = 'completed'
+    jobs[upload_job_id]['progress'] = 100
+
+    if fail_count == 0:
+        jobs[upload_job_id]['message'] = f'All {success_count} clips uploaded!'
+    else:
+        jobs[upload_job_id]['message'] = f'{success_count} uploaded, {fail_count} failed'
+        if success_count == 0:
+            jobs[upload_job_id]['status'] = 'error'
+            jobs[upload_job_id]['error'] = results[0].get('error', 'All uploads failed')
 
 
 # ═══════════════════════════════════════════════════
