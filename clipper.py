@@ -116,9 +116,10 @@ class VideoClipper:
         # Foreground: scale to fit inside 9:16 (maintains aspect ratio, no crop)
         # force_original_aspect_ratio=decrease ensures it fits within the box
         # pad ensures even dimensions
+        # NOTE: use color=black (not black@0) — alpha not supported with yuv420p output
         parts.append(
             f"[fg_in]scale={tw}:{th}:force_original_aspect_ratio=decrease,"
-            f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=black@0"
+            f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=black"
             f"[fg]"
         )
 
@@ -221,6 +222,7 @@ class VideoClipper:
             ]
 
             use_filter_complex = False
+            used_fallback_vf = False
 
             # 9:16 scale-to-fit with blurred background (no cropping)
             if self.config.crop_vertical:
@@ -236,14 +238,21 @@ class VideoClipper:
                 except Exception as e:
                     logger.warning(f"Could not build vertical filter, using simple scale: {e}")
                     # Fallback: simple scale without crop
-                    cmd.extend(["-vf",
+                    # MUST merge with fade filter into a single -vf to avoid duplicate -vf flags
+                    # (FFmpeg silently drops earlier -vf when multiple are given)
+                    fallback_vf = (
                         f"scale={self.config.vertical_width}:{self.config.vertical_height}:"
                         f"force_original_aspect_ratio=decrease,"
                         f"pad={self.config.vertical_width}:{self.config.vertical_height}:(ow-iw)/2:(oh-ih)/2:black"
-                    ])
+                    )
+                    fade_filter = self._build_fade_filter(duration)
+                    if fade_filter:
+                        fallback_vf += f",{fade_filter}"
+                    cmd.extend(["-vf", fallback_vf])
+                    used_fallback_vf = True
 
-            # Fade (only if not already applied via filter_complex)
-            if not use_filter_complex:
+            # Fade (only if not already applied via filter_complex or fallback)
+            if not use_filter_complex and not used_fallback_vf:
                 fade_filter = self._build_fade_filter(duration)
                 if fade_filter:
                     cmd.extend(["-vf", fade_filter])

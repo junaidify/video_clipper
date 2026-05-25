@@ -1110,6 +1110,35 @@
             stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
         }
 
+        /* ═══ Delete & Upload Status ═══ */
+        .delete-btn {
+            position: absolute; top: 8px; right: 8px; z-index: 5;
+            width: 28px; height: 28px; border-radius: 50%;
+            background: rgba(220,38,38,0.15); border: 1px solid rgba(220,38,38,0.3);
+            color: #ef4444; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.2s, background 0.2s;
+        }
+        .lib-card:hover .delete-btn,
+        .folder-card:hover .delete-btn,
+        .output-clip-card:hover .delete-btn { opacity: 1; }
+        .delete-btn:hover { background: rgba(220,38,38,0.35); color: #fff; }
+        .delete-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+        .upload-check {
+            position: absolute; top: 8px; left: 8px; z-index: 5;
+            width: 28px; height: 28px; border-radius: 50%;
+            background: rgba(100,100,100,0.25); border: 1px solid rgba(150,150,150,0.3);
+            color: var(--text-dim); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .upload-check:hover { background: rgba(34,197,94,0.2); border-color: rgba(34,197,94,0.4); color: #22c55e; }
+        .upload-check.checked { background: rgba(34,197,94,0.2); border-color: rgba(34,197,94,0.5); color: #22c55e; }
+        .upload-check svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+        .lib-card, .folder-card, .output-clip-card { position: relative; }
+
         /* ═══ Video Select ═══ */
         .video-select {
             width: 100%;
@@ -1816,37 +1845,53 @@
 
 <!-- ═══ YouTube Upload Modal ═══ -->
 <div class="modal-overlay" id="yt-upload-modal">
-    <div class="modal" style="max-width:560px">
+    <div class="modal" style="max-width:600px">
         <div class="modal-header">
             <h3 style="display:flex;align-items:center;gap:10px">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="#cc0000"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
-                UPLOAD TO YOUTUBE
+                UPLOAD ALL TO YOUTUBE
             </h3>
             <button class="modal-close" onclick="closeYoutubeUpload()">&times;</button>
         </div>
-        <div class="modal-body">
-            <div class="yt-connect-box" id="yt-connect-box">
+        <div class="modal-body" style="padding:28px">
+            <div class="yt-connect-box" id="yt-connect-box" style="margin-bottom:24px">
                 <div class="yt-dot disconnected" id="yt-connect-dot"></div>
                 <div style="flex:1">
-                    <div id="yt-connect-label" style="font-size:0.88rem;color:var(--text-secondary)">Checking...</div>
-                    <div id="yt-connect-sub" style="font-size:0.76rem;color:var(--text-ghost);margin-top:2px"></div>
+                    <div id="yt-connect-label" style="font-size:0.88rem;color:var(--text-primary)">Checking...</div>
+                    <div id="yt-connect-sub" style="font-size:0.76rem;color:var(--text-dim);margin-top:2px"></div>
                 </div>
                 <button class="btn btn-sm" id="yt-connect-btn" onclick="connectYoutube()" style="display:none">Connect</button>
                 <button class="btn btn-sm btn-secondary" id="yt-disconnect-btn" onclick="disconnectYoutube()" style="display:none;font-size:0.72rem;padding:4px 10px">Disconnect</button>
             </div>
             <div id="yt-upload-settings" style="display:none">
-                <div style="display:flex;gap:12px;margin-bottom:14px">
-                    <div class="form-group" style="flex:1">
+                <!-- AI Generate All -->
+                <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;padding:16px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                    <button class="btn btn-sm" id="yt-batch-ai-btn" onclick="generateBatchAiMetadata()" style="background:linear-gradient(135deg,#76b947,#4285f4);color:#fff;border:none;font-size:0.8rem;padding:10px 18px;border-radius:8px;display:flex;align-items:center;gap:7px;font-weight:600;white-space:nowrap">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z"/></svg>
+                        Generate All with AI
+                    </button>
+                    <div style="flex:1">
+                        <div style="font-size:0.82rem;color:var(--text-primary)">Auto-generate title, description &amp; tags for each clip</div>
+                        <div id="yt-batch-ai-status" style="font-size:0.74rem;color:var(--text-dim);margin-top:4px"></div>
+                    </div>
+                </div>
+
+                <!-- Per-clip metadata preview (populated by AI) -->
+                <div id="yt-batch-clips-preview" style="display:none;margin-bottom:22px;max-height:280px;overflow-y:auto;border:1px solid var(--border-hover);border-radius:10px;background:var(--bg-elevated)">
+                </div>
+
+                <div style="display:flex;gap:14px;margin-bottom:20px">
+                    <div class="form-group" style="flex:1;margin-bottom:0">
                         <label>PRIVACY</label>
-                        <select id="yt-privacy" class="select-input">
+                        <select id="yt-privacy" class="select-input" style="padding:10px 14px">
                             <option value="private">Private</option>
                             <option value="unlisted" selected>Unlisted</option>
                             <option value="public">Public</option>
                         </select>
                     </div>
-                    <div class="form-group" style="flex:1">
+                    <div class="form-group" style="flex:1;margin-bottom:0">
                         <label>CATEGORY</label>
-                        <select id="yt-category" class="select-input">
+                        <select id="yt-category" class="select-input" style="padding:10px 14px">
                             <option value="entertainment">Entertainment</option>
                             <option value="education">Education</option>
                             <option value="comedy">Comedy</option>
@@ -1860,33 +1905,37 @@
                         </select>
                     </div>
                 </div>
-                <div class="form-group" style="margin-bottom:14px">
-                    <label>EXTRA TAGS <span style="font-weight:400;color:var(--text-ghost)">(comma separated)</span></label>
-                    <input type="text" id="yt-tags" placeholder="shorts, clips, viral" style="font-size:0.84rem">
+                <div class="form-group" style="margin-bottom:20px">
+                    <label>EXTRA TAGS <span style="font-weight:400;color:var(--text-dim)">(added to all clips, comma separated)</span></label>
+                    <input type="text" id="yt-tags" placeholder="shorts, clips, viral" style="font-size:0.84rem;padding:10px 14px">
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
                     <input type="checkbox" id="yt-kids" style="width:auto">
-                    <label for="yt-kids" style="font-size:0.82rem;color:var(--text-dim);cursor:pointer;margin:0">Made for Kids (COPPA)</label>
+                    <label for="yt-kids" style="font-size:0.82rem;color:var(--text-secondary);cursor:pointer;margin:0">Made for Kids (COPPA)</label>
                 </div>
-                <div id="yt-clip-count" style="font-size:0.84rem;color:var(--text-dim);margin-bottom:12px"></div>
-                <button class="btn btn-yt btn-full" id="yt-start-upload-btn" onclick="startYoutubeUpload()">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
-                    Upload All Clips
-                </button>
+
+                <!-- Clip count + Upload button -->
+                <div style="padding:20px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px">
+                    <div id="yt-clip-count" style="font-size:0.84rem;color:var(--text-secondary);margin-bottom:16px;text-align:center"></div>
+                    <button class="btn btn-yt btn-full" id="yt-start-upload-btn" onclick="startYoutubeUpload()" style="font-size:0.92rem;padding:14px 0;border-radius:10px">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+                        Upload All Clips
+                    </button>
+                </div>
             </div>
-            <div id="yt-upload-progress" style="display:none">
+            <div id="yt-upload-progress" style="display:none;padding:20px 0">
                 <div class="progress-wrap" style="margin-bottom:14px">
                     <div class="progress-bar"><div class="progress-fill" id="yt-progress-fill" style="width:0%"></div></div>
                     <div class="progress-label" id="yt-progress-label">Starting...</div>
                 </div>
                 <div id="yt-upload-results"></div>
             </div>
-            <div id="yt-not-configured" style="display:none;text-align:center;padding:20px 0">
-                <p style="color:var(--text-dim);font-size:0.88rem;line-height:1.7">
-                    YouTube upload requires <code style="background:var(--bg-elevated);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border)">GOOGLE_CLIENT_ID</code> and
-                    <code style="background:var(--bg-elevated);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border)">GOOGLE_CLIENT_SECRET</code> in your <code style="background:var(--bg-elevated);padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border)">.env</code> file.
+            <div id="yt-not-configured" style="display:none;text-align:center;padding:28px 0">
+                <p style="color:var(--text-secondary);font-size:0.88rem;line-height:1.7">
+                    YouTube upload requires <code style="background:var(--bg-card);padding:3px 8px;border-radius:5px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border-hover)">GOOGLE_CLIENT_ID</code> and
+                    <code style="background:var(--bg-card);padding:3px 8px;border-radius:5px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border-hover)">GOOGLE_CLIENT_SECRET</code> in your <code style="background:var(--bg-card);padding:3px 8px;border-radius:5px;font-family:var(--mono);font-size:0.78rem;border:1px solid var(--border-hover)">.env</code> file.
                 </p>
-                <p style="color:var(--text-ghost);font-size:0.78rem;margin-top:10px">
+                <p style="color:var(--text-dim);font-size:0.78rem;margin-top:10px">
                     Get them from Google Cloud Console &rarr; APIs &amp; Services &rarr; Credentials &rarr; OAuth 2.0 Client ID
                 </p>
             </div>
@@ -1904,55 +1953,55 @@
             </h3>
             <button class="modal-close" onclick="closeSingleYtModal()">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="padding:20px 24px 24px">
             <!-- File info -->
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--text-dim)" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10,8 16,12 10,16" fill="var(--text-dim)" stroke="none"/></svg>
-                <span id="yts-filename" style="font-family:var(--mono);font-size:0.82rem;color:var(--text-secondary);word-break:break-all"></span>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:12px 16px;background:var(--bg-card);border:1px solid var(--border-hover);border-radius:10px">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10,8 16,12 10,16" fill="var(--text-secondary)" stroke="none"/></svg>
+                <span id="yts-filename" style="font-family:var(--mono);font-size:0.82rem;color:var(--text-primary);word-break:break-all"></span>
             </div>
 
             <!-- AI Generate button -->
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-                <button class="btn btn-sm" id="yts-ai-btn" onclick="generateAiMetadata()" style="background:linear-gradient(135deg,#4285f4,#ab47bc);color:#fff;border:none;font-size:0.78rem;padding:6px 14px;border-radius:6px;display:flex;align-items:center;gap:6px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                <button class="btn btn-sm" id="yts-ai-btn" onclick="generateAiMetadata()" style="background:linear-gradient(135deg,#76b947,#4285f4);color:#fff;border:none;font-size:0.8rem;padding:8px 16px;border-radius:8px;display:flex;align-items:center;gap:7px;font-weight:600;letter-spacing:0.3px">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z"/></svg>
                     Generate with AI
                 </button>
-                <span id="yts-ai-status" style="font-size:0.74rem;color:var(--text-ghost)"></span>
+                <span id="yts-ai-status" style="font-size:0.76rem;color:var(--text-secondary)"></span>
             </div>
 
             <!-- Title -->
-            <div class="form-group" style="margin-bottom:14px">
+            <div class="form-group" style="margin-bottom:16px">
                 <label>TITLE</label>
-                <input type="text" id="yts-title" maxlength="100" placeholder="Enter a catchy title..." style="font-size:0.86rem">
-                <div style="text-align:right;font-size:0.7rem;color:var(--text-ghost);margin-top:3px"><span id="yts-title-count">0</span>/100</div>
+                <input type="text" id="yts-title" maxlength="100" placeholder="Enter a catchy title..." style="font-size:0.86rem;padding:10px 14px">
+                <div style="text-align:right;font-size:0.7rem;color:var(--text-dim);margin-top:4px"><span id="yts-title-count">0</span>/100</div>
             </div>
 
             <!-- Description -->
-            <div class="form-group" style="margin-bottom:14px">
+            <div class="form-group" style="margin-bottom:16px">
                 <label>DESCRIPTION</label>
-                <textarea id="yts-description" rows="4" maxlength="5000" placeholder="Describe your video..." style="font-size:0.84rem;resize:vertical;min-height:80px;font-family:inherit"></textarea>
-                <div style="text-align:right;font-size:0.7rem;color:var(--text-ghost);margin-top:3px"><span id="yts-desc-count">0</span>/5000</div>
+                <textarea id="yts-description" rows="4" maxlength="5000" placeholder="Describe your video..." style="font-size:0.84rem;resize:vertical;min-height:88px;font-family:inherit;padding:10px 14px"></textarea>
+                <div style="text-align:right;font-size:0.7rem;color:var(--text-dim);margin-top:4px"><span id="yts-desc-count">0</span>/5000</div>
             </div>
 
             <!-- Tags -->
-            <div class="form-group" style="margin-bottom:14px">
-                <label>TAGS <span style="font-weight:400;color:var(--text-ghost)">(comma separated)</span></label>
-                <input type="text" id="yts-tags" placeholder="shorts, viral, trending" style="font-size:0.84rem">
+            <div class="form-group" style="margin-bottom:16px">
+                <label>TAGS <span style="font-weight:400;color:var(--text-dim)">(comma separated)</span></label>
+                <input type="text" id="yts-tags" placeholder="shorts, viral, trending" style="font-size:0.84rem;padding:10px 14px">
             </div>
 
             <!-- Privacy + Category row -->
-            <div style="display:flex;gap:12px;margin-bottom:14px">
-                <div class="form-group" style="flex:1">
+            <div style="display:flex;gap:14px;margin-bottom:16px">
+                <div class="form-group" style="flex:1;margin-bottom:0">
                     <label>PRIVACY</label>
-                    <select id="yts-privacy" class="select-input" onchange="onYtsPrivacyChange()">
+                    <select id="yts-privacy" class="select-input" onchange="onYtsPrivacyChange()" style="padding:10px 14px">
                         <option value="private">Private</option>
                         <option value="unlisted" selected>Unlisted</option>
                         <option value="public">Public</option>
                     </select>
                 </div>
-                <div class="form-group" style="flex:1">
+                <div class="form-group" style="flex:1;margin-bottom:0">
                     <label>CATEGORY</label>
-                    <select id="yts-category" class="select-input">
+                    <select id="yts-category" class="select-input" style="padding:10px 14px">
                         <option value="entertainment">Entertainment</option>
                         <option value="education">Education</option>
                         <option value="comedy">Comedy</option>
@@ -1968,45 +2017,45 @@
             </div>
 
             <!-- Schedule toggle -->
-            <div id="yts-schedule-section" style="margin-bottom:18px">
+            <div id="yts-schedule-section" style="margin-bottom:20px">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                     <input type="checkbox" id="yts-schedule-toggle" style="width:auto" onchange="onScheduleToggle()">
-                    <label for="yts-schedule-toggle" style="font-size:0.84rem;color:var(--text-secondary);cursor:pointer;margin:0;display:flex;align-items:center;gap:6px">
-                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <label for="yts-schedule-toggle" style="font-size:0.84rem;color:var(--text-primary);cursor:pointer;margin:0;display:flex;align-items:center;gap:7px">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         Schedule for later
                     </label>
                 </div>
-                <div id="yts-schedule-picker" style="display:none;padding:12px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px">
-                    <div style="display:flex;gap:12px;align-items:end">
+                <div id="yts-schedule-picker" style="display:none;padding:14px 16px;background:var(--bg-card);border:1px solid var(--border-hover);border-radius:10px">
+                    <div style="display:flex;gap:14px;align-items:end">
                         <div class="form-group" style="flex:1;margin:0">
-                            <label style="font-size:0.72rem">DATE</label>
-                            <input type="date" id="yts-schedule-date" style="font-size:0.84rem">
+                            <label style="font-size:0.72rem;color:var(--text-secondary)">DATE</label>
+                            <input type="date" id="yts-schedule-date" style="font-size:0.84rem;padding:9px 12px">
                         </div>
                         <div class="form-group" style="flex:1;margin:0">
-                            <label style="font-size:0.72rem">TIME</label>
-                            <input type="time" id="yts-schedule-time" value="12:00" style="font-size:0.84rem">
+                            <label style="font-size:0.72rem;color:var(--text-secondary)">TIME</label>
+                            <input type="time" id="yts-schedule-time" value="12:00" style="font-size:0.84rem;padding:9px 12px">
                         </div>
                     </div>
-                    <div style="font-size:0.72rem;color:var(--text-ghost);margin-top:8px">
+                    <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:10px">
                         Video uploads as private and auto-publishes at the scheduled time (your local timezone)
                     </div>
                 </div>
             </div>
 
             <!-- Upload / Schedule button -->
-            <button class="btn btn-yt btn-full" id="yts-upload-btn" onclick="confirmSingleUpload()" style="font-size:0.92rem;padding:12px 0">
+            <button class="btn btn-yt btn-full" id="yts-upload-btn" onclick="confirmSingleUpload()" style="font-size:0.92rem;padding:13px 0;border-radius:10px;margin-top:4px">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
                 <span id="yts-upload-btn-text">Upload to YouTube</span>
             </button>
 
             <!-- Upload progress (shown during upload) -->
-            <div id="yts-uploading" style="display:none;text-align:center;padding:20px 0">
+            <div id="yts-uploading" style="display:none;text-align:center;padding:24px 0">
                 <svg viewBox="0 0 24 24" width="32" height="32" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="#cc0000" fill="none" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
-                <div style="margin-top:10px;font-size:0.88rem;color:var(--text-dim)">Uploading to YouTube...</div>
+                <div style="margin-top:12px;font-size:0.88rem;color:var(--text-secondary)">Uploading to YouTube...</div>
             </div>
 
             <!-- Upload result -->
-            <div id="yts-result" style="display:none;text-align:center;padding:20px 0">
+            <div id="yts-result" style="display:none;text-align:center;padding:24px 0">
                 <div id="yts-result-content"></div>
             </div>
         </div>
@@ -2178,6 +2227,12 @@ async function loadLibrary() {
         count.textContent = `(${data.videos.length})`;
         grid.innerHTML = data.videos.map(v => `
             <div class="lib-card ${selectedVideoId === v.video_id ? 'selected' : ''}" onclick="selectVideo('${v.video_id}')">
+                <button class="upload-check ${_uploadStatus['video:'+v.video_id]?'checked':''}" onclick="event.stopPropagation();toggleUploadStatus('video:${v.video_id}',this)" title="Mark as uploaded">
+                    <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <button class="delete-btn" onclick="event.stopPropagation();deleteLibraryVideo('${v.video_id}','${escHtml(v.title)}')" title="Delete video">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
                 <div class="lib-title">${escHtml(v.title)}</div>
                 <div class="lib-meta">
                     <span class="tag tag-blue">${v.source}</span>
@@ -2274,11 +2329,20 @@ async function pollSmartJob(jobId) {
             clearInterval(smartPoll);
             document.getElementById('btn-smart').disabled = false;
             document.getElementById('smart-progress').style.display = 'none';
-            if (d.clips?.length) showSmartResults(d.clips, jobId);
+            if (d.clips?.length) {
+                showSmartResults(d.clips, jobId);
+            } else {
+                // No clips produced — show the message (includes error details now)
+                showErr('smart-error', d.message || 'No clips were produced. Check terminal for FFmpeg errors.');
+            }
+            // Show partial failure warning if some clips failed
+            if (d.error && d.clips?.length) {
+                showErr('smart-error', d.message + ' — ' + d.error);
+            }
         } else if (d.status === 'error') {
             clearInterval(smartPoll);
             document.getElementById('smart-progress').style.display = 'none';
-            showErr('smart-error', d.error);
+            showErr('smart-error', d.error || d.message || 'Unknown error');
             document.getElementById('btn-smart').disabled = false;
         }
     } catch(e) {
@@ -2562,6 +2626,9 @@ function renderFolderGrid() {
     const list = document.getElementById('output-list');
     const cards = _outputFolders.map((f, idx) => `
         <div class="folder-card" onclick="openFolder(${idx})">
+            <button class="delete-btn" onclick="event.stopPropagation();deleteClipFolder(${idx})" title="Delete all clips">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
             <div class="fc-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
             <div class="fc-title" title="${escHtml(f.title)}">${escHtml(f.title)}</div>
             <div class="fc-meta">${f.totalClips} clip${f.totalClips!==1?'s':''} &middot; ${f.sessions} session${f.sessions!==1?'s':''}<br>${formatDuration(f.duration)}</div>
@@ -2592,8 +2659,15 @@ async function openFolder(idx) {
             const clipData = await clipRes.json();
             const files = clipData.files || [];
             for (const f of files) {
+                const clipKey = 'clip:'+jobId+':'+f.filename;
                 clipsHtml += `
                     <div class="output-clip-card">
+                        <button class="upload-check ${_uploadStatus[clipKey]?'checked':''}" onclick="event.stopPropagation();toggleUploadStatus('${clipKey}',this)" title="Mark as uploaded">
+                            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                        </button>
+                        <button class="delete-btn" onclick="event.stopPropagation();deleteClipFile('${jobId}','${f.filename}',this)" title="Delete clip">
+                            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
                         <video controls preload="metadata"><source src="${f.url}" type="video/mp4"></video>
                         <div class="occ-info">
                             <span class="occ-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</span>
@@ -2665,6 +2739,10 @@ function clipActionsHtml(jobId, filename) {
         <button class="clip-act-btn clip-yt-btn" onclick="uploadSingleToYoutube('${jobId}','${filename}',this)" title="Upload to YouTube">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="#cc0000" style="vertical-align:-2px"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
             YouTube
+        </button>
+        <button class="clip-act-btn" onclick="deleteClipFile('${jobId}','${filename}',this)" style="color:#ef4444;border-color:rgba(220,38,38,0.3)" title="Delete clip">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Delete
         </button>
     </div>`;
 }
@@ -3048,6 +3126,12 @@ function openYoutubeUpload(source) {
     else if (source === 'manual') ytCurrentJobId = window._lastManualJobId;
     else if (source === 'sequential') ytCurrentJobId = window._lastSeqJobId;
     if (!ytCurrentJobId) { alert('No clips available. Generate clips first.'); return; }
+    // Reset batch AI state
+    _batchAiClips = [];
+    document.getElementById('yt-batch-clips-preview').style.display = 'none';
+    document.getElementById('yt-batch-clips-preview').innerHTML = '';
+    document.getElementById('yt-batch-ai-status').textContent = '';
+    document.getElementById('yt-batch-ai-btn').disabled = false;
     document.getElementById('yt-upload-modal').classList.add('active');
     document.getElementById('yt-upload-settings').style.display = 'none';
     document.getElementById('yt-upload-progress').style.display = 'none';
@@ -3129,6 +3213,60 @@ function closeYoutubeUpload() {
     if (ytUploadPoll) { clearInterval(ytUploadPoll); ytUploadPoll = null; }
 }
 
+// ── Batch AI Metadata Generation ──
+var _batchAiClips = []; // stores AI-generated per-clip metadata
+
+async function generateBatchAiMetadata() {
+    var btn = document.getElementById('yt-batch-ai-btn');
+    var statusEl = document.getElementById('yt-batch-ai-status');
+    btn.disabled = true;
+    statusEl.textContent = 'Generating metadata for all clips...';
+    statusEl.style.color = 'var(--accent)';
+
+    try {
+        var res = await fetch('/api/youtube/generate-metadata-batch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: ytCurrentJobId })
+        });
+        var data = await res.json();
+        if (data.error) {
+            statusEl.textContent = 'Failed: ' + data.error;
+            statusEl.style.color = 'var(--red)';
+            btn.disabled = false;
+            return;
+        }
+
+        _batchAiClips = data.clips || [];
+        var aiCount = _batchAiClips.filter(function(c) { return c.ai_generated; }).length;
+        statusEl.textContent = aiCount + '/' + _batchAiClips.length + ' clips generated with AI';
+        statusEl.style.color = 'var(--green)';
+
+        // Show preview cards
+        var previewEl = document.getElementById('yt-batch-clips-preview');
+        var html = '';
+        for (var i = 0; i < _batchAiClips.length; i++) {
+            var c = _batchAiClips[i];
+            html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border)' + (i === _batchAiClips.length - 1 ? ';border-bottom:none' : '') + '">';
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+            html += '<span style="font-size:0.7rem;font-weight:700;color:var(--accent);background:var(--bg-elevated);padding:2px 7px;border-radius:4px">' + (i+1) + '</span>';
+            html += '<span style="font-family:var(--mono);font-size:0.74rem;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(c.filename) + '</span>';
+            if (c.ai_generated) html += '<span style="font-size:0.65rem;color:var(--green);margin-left:auto">AI</span>';
+            html += '</div>';
+            html += '<div style="font-size:0.82rem;color:var(--text-primary);font-weight:500;margin-bottom:3px">' + escHtml(c.title) + '</div>';
+            html += '<div style="font-size:0.72rem;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((c.tags || []).join(', ')) + '</div>';
+            html += '</div>';
+        }
+        previewEl.innerHTML = html;
+        previewEl.style.display = '';
+
+    } catch(e) {
+        statusEl.textContent = 'Error: ' + e.message;
+        statusEl.style.color = 'var(--red)';
+    }
+    btn.disabled = false;
+}
+
 async function startYoutubeUpload() {
     var btn = document.getElementById('yt-start-upload-btn');
     btn.disabled = true;
@@ -3140,13 +3278,17 @@ async function startYoutubeUpload() {
     var sourceTitle = '';
     var sel = document.querySelector('#lib-grid .lib-card.selected .lc-title');
     if (sel) sourceTitle = sel.textContent || '';
+
+    // Use AI-generated per-clip metadata if available, otherwise use the generic ytCurrentClipsMeta
+    var clipsMeta = _batchAiClips.length > 0 ? _batchAiClips : ytCurrentClipsMeta;
+
     try {
         var res = await fetch('/api/youtube/upload', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 job_id: ytCurrentJobId, privacy: privacy, category: category, tags: tags,
-                made_for_kids: madeForKids, source_title: sourceTitle, clips: ytCurrentClipsMeta
+                made_for_kids: madeForKids, source_title: sourceTitle, clips: clipsMeta
             })
         });
         var data = await res.json();
@@ -3215,6 +3357,11 @@ function openOutputYoutubeUpload(folderIdx) {
     document.getElementById('yt-upload-settings').style.display = 'none';
     document.getElementById('yt-upload-progress').style.display = 'none';
     document.getElementById('yt-not-configured').style.display = 'none';
+    _batchAiClips = [];
+    document.getElementById('yt-batch-clips-preview').style.display = 'none';
+    document.getElementById('yt-batch-clips-preview').innerHTML = '';
+    document.getElementById('yt-batch-ai-status').textContent = '';
+    document.getElementById('yt-batch-ai-btn').disabled = false;
     refreshYoutubeConnect();
 }
 
@@ -3433,8 +3580,87 @@ async function confirmSingleUpload() {
     }
 }
 
+// ═══ Delete & Upload Status Functions ═══
+let _uploadStatus = {};
+
+async function loadUploadStatus() {
+    try {
+        const res = await fetch('/api/upload-status');
+        _uploadStatus = await res.json();
+    } catch(e) { _uploadStatus = {}; }
+}
+
+async function toggleUploadStatus(key, btn) {
+    const isChecked = btn.classList.contains('checked');
+    btn.classList.toggle('checked');
+    try {
+        await fetch('/api/upload-status', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ key, uploaded: !isChecked })
+        });
+        _uploadStatus[key] = !isChecked;
+        if (!_uploadStatus[key]) delete _uploadStatus[key];
+    } catch(e) { btn.classList.toggle('checked'); }
+}
+
+async function deleteLibraryVideo(videoId, title) {
+    if (!confirm(`Delete "${title}" and its source file?\nThis cannot be undone.`)) return;
+    try {
+        const res = await fetch('/api/library/delete', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ video_id: videoId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (selectedVideoId === videoId) selectedVideoId = '';
+            loadLibrary();
+            refreshVideoSelects();
+        } else {
+            alert('Delete failed: ' + (data.error || 'Unknown error'));
+        }
+    } catch(e) { alert('Delete error: ' + e.message); }
+}
+
+async function deleteClipFolder(folderIdx) {
+    const folder = _outputFolders[folderIdx];
+    if (!folder) return;
+    if (!confirm(`Delete all ${folder.totalClips} clips from "${folder.title}"?\nThis cannot be undone.`)) return;
+    try {
+        for (const jobId of folder.jobIds) {
+            await fetch('/api/clips/delete', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ job_id: jobId })
+            });
+        }
+        loadOutputs();
+    } catch(e) { alert('Delete error: ' + e.message); }
+}
+
+async function deleteClipFile(jobId, filename, btn) {
+    if (!confirm(`Delete clip "${filename}"?`)) return;
+    try {
+        const res = await fetch('/api/clips/delete', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ job_id: jobId, filename })
+        });
+        const data = await res.json();
+        if (data.success) {
+            const card = btn.closest('.output-clip-card') || btn.closest('.clip-card');
+            if (card) card.remove();
+            // Refresh folder count
+            loadOutputs();
+        } else {
+            alert('Delete failed: ' + (data.error || 'Unknown error'));
+        }
+    } catch(e) { alert('Delete error: ' + e.message); }
+}
+
 // Init
-loadLibrary();
+loadUploadStatus().then(() => { loadLibrary(); });
 loadSettings();
 loadTrainingSessions();
 checkCookieStatus();
