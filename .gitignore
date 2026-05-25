@@ -26,3 +26,9 @@ Thumbs.db
 graphify-out/
 design_philosophy.md
 CLAUDE.md
+
+# ── Documents ──
+.youtube_token.json
+.*_token.json
+
+

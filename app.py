@@ -264,10 +264,10 @@ def _library_download_job(job_id: str, url: str):
             duration=duration,
         )
 
-        jobs[job_id]['status'] = 'completed'
+        jobs[job_id]['video'] = entry.to_dict()
         jobs[job_id]['progress'] = 100
         jobs[job_id]['message'] = 'Added to library!'
-        jobs[job_id]['video'] = entry.to_dict()
+        jobs[job_id]['status'] = 'completed'  # MUST be last — triggers frontend render
 
     except Exception as e:
         logger.exception("Library download job failed")
@@ -285,6 +285,84 @@ def library_delete():
         return jsonify({'error': 'Missing video_id'}), 400
     ok = video_library.delete_video(video_id)
     return jsonify({'success': ok})
+
+
+@app.route('/api/clips/delete', methods=['POST'])
+def clips_delete():
+    """Delete a clip file or entire clip folder."""
+    import shutil
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')  # optional — if empty, delete whole folder
+
+    if not job_id:
+        return jsonify({'error': 'Missing job_id'}), 400
+
+    clip_dir = _find_job_dir(job_id)
+    if not os.path.isdir(clip_dir):
+        return jsonify({'error': 'Clip directory not found'}), 404
+
+    if filename:
+        # Delete single clip file
+        fpath = os.path.join(clip_dir, filename)
+        if not os.path.isfile(fpath):
+            return jsonify({'error': 'File not found'}), 404
+        os.remove(fpath)
+        # If folder is now empty of video files, remove the folder too
+        remaining = [f for f in os.listdir(clip_dir)
+                     if f.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm'))]
+        if not remaining:
+            shutil.rmtree(clip_dir, ignore_errors=True)
+        return jsonify({'success': True, 'deleted': 'file'})
+    else:
+        # Delete entire clip folder
+        shutil.rmtree(clip_dir, ignore_errors=True)
+        return jsonify({'success': True, 'deleted': 'folder'})
+
+
+# ── Upload Status Tracking ──
+_upload_status_file = os.path.join(os.path.dirname(__file__), 'upload_status.json')
+_upload_status_lock = threading.Lock()
+
+
+def _load_upload_status():
+    with _upload_status_lock:
+        if os.path.exists(_upload_status_file):
+            try:
+                with open(_upload_status_file, 'r') as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+
+def _save_upload_status(data):
+    with _upload_status_lock:
+        with open(_upload_status_file, 'w') as f:
+            json.dump(data, f, indent=2)
+
+
+@app.route('/api/upload-status', methods=['GET'])
+def get_upload_status():
+    """Get all upload status markers."""
+    return jsonify(_load_upload_status())
+
+
+@app.route('/api/upload-status', methods=['POST'])
+def set_upload_status():
+    """Toggle upload status for a video or clip."""
+    data = request.get_json() or {}
+    key = data.get('key', '')  # e.g. "video:abc123" or "clip:jobid:filename"
+    uploaded = data.get('uploaded', False)
+    if not key:
+        return jsonify({'error': 'Missing key'}), 400
+    status = _load_upload_status()
+    if uploaded:
+        status[key] = True
+    else:
+        status.pop(key, None)
+    _save_upload_status(status)
+    return jsonify({'success': True})
 
 
 # ═══════════════════════════════════════════════════
@@ -396,9 +474,9 @@ def _smart_clip_job(job_id, video_path, video_id, output_dir, settings):
                 candidates = candidates[:settings['max_clips']]
 
         if not candidates:
-            jobs[job_id]['status'] = 'completed'
             jobs[job_id]['message'] = 'No hooks found. Lower the min score.'
             jobs[job_id]['progress'] = 100
+            jobs[job_id]['status'] = 'completed'  # MUST be last
             return
 
         jobs[job_id]['message'] = f'{len(candidates)} candidates found'
@@ -430,6 +508,7 @@ def _smart_clip_job(job_id, video_path, video_id, output_dir, settings):
             results.extend(clip_results)
 
         clips_info = []
+        failed_clips = []
         for r in results:
             if r.success:
                 fname = Path(r.output_path).name
@@ -443,14 +522,32 @@ def _smart_clip_job(job_id, video_path, video_id, output_dir, settings):
                     'reason': r.reason,
                     'hook_text': r.hook_text[:200],
                 })
+            else:
+                failed_clips.append(f"Clip {r.clip_number}: {r.error or 'Unknown error'}")
+                logger.error(f"Clip {r.clip_number} failed: {r.error}")
 
         # Record output dir in library
         video_library.add_clips_directory(video_id, output_dir)
 
-        jobs[job_id]['status'] = 'completed'
+        # Build status message with failure details if any
+        if clips_info:
+            msg = f'Done! {len(clips_info)} clips.'
+            if failed_clips:
+                msg += f' ({len(failed_clips)} failed)'
+        elif failed_clips:
+            # ALL clips failed — surface the first error so user knows why
+            msg = f'All {len(failed_clips)} clips failed to extract. {failed_clips[0]}'
+        else:
+            msg = 'No clips produced.'
+
+        # CRITICAL: Set clips and message BEFORE status to avoid race condition
+        # (frontend polls status; if it reads 'completed' before clips is set,
+        #  it sees clips=[] and skips rendering)
         jobs[job_id]['clips'] = clips_info
-        jobs[job_id]['message'] = f'Done! {len(clips_info)} clips.'
+        jobs[job_id]['message'] = msg
         jobs[job_id]['progress'] = 100
+        jobs[job_id]['error'] = '\n'.join(failed_clips) if failed_clips and not clips_info else None
+        jobs[job_id]['status'] = 'completed'  # MUST be last — triggers frontend render
 
     except Exception as e:
         logger.exception(f"Smart clip job {job_id} failed")
@@ -581,7 +678,6 @@ def _sequential_job(job_id, video_path, video_id, output_dir,
         failed_reels = [r for r in results if not r.get('success')]
         video_library.add_clips_directory(video_id, output_dir)
 
-        jobs[job_id]['status'] = 'completed'
         jobs[job_id]['reels'] = success_reels
         jobs[job_id]['progress'] = 100
 
@@ -589,11 +685,15 @@ def _sequential_job(job_id, video_path, video_id, output_dir,
             jobs[job_id]['message'] = f'Done! {len(success_reels)} reels.'
         elif failed_reels:
             first_err = failed_reels[0].get('error', 'Unknown')
-            jobs[job_id]['status'] = 'error'
             jobs[job_id]['error'] = f'All {len(failed_reels)} reels failed. First error: {first_err}'
             jobs[job_id]['message'] = f'FFmpeg failed on all reels'
+            jobs[job_id]['status'] = 'error'  # set error status last
+            logger.info(f"Sequential job {job_id}: {len(success_reels)} ok, {len(failed_reels)} failed")
+            return
         else:
             jobs[job_id]['message'] = 'No split points computed (video too short?)'
+
+        jobs[job_id]['status'] = 'completed'  # MUST be last — triggers frontend render
 
         logger.info(f"Sequential job {job_id}: {len(success_reels)} ok, {len(failed_reels)} failed")
 
@@ -1307,6 +1407,121 @@ Rules:
         })
 
 
+@app.route('/api/youtube/generate-metadata-batch', methods=['POST'])
+def youtube_generate_metadata_batch():
+    """Generate AI metadata for all clips in a job at once."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+
+    if not job_id:
+        return jsonify({'error': 'Missing job_id'}), 400
+
+    clip_dir = _find_job_dir(job_id)
+    if not os.path.isdir(clip_dir):
+        return jsonify({'error': 'Clip directory not found'}), 404
+
+    clip_files = sorted([
+        f for f in os.listdir(clip_dir)
+        if f.lower().endswith(('.mp4', '.webm', '.mov'))
+        and '_subtitled' not in f.lower()
+        and '_overlay' not in f.lower()
+        and '_thumb_' not in f.lower()
+    ])
+
+    if not clip_files:
+        return jsonify({'error': 'No clips found'}), 404
+
+    results = []
+    for idx, filename in enumerate(clip_files):
+        clip_path = os.path.join(clip_dir, filename)
+
+        # Read SRT transcript if available
+        stem = Path(filename).stem
+        srt_path = os.path.join(clip_dir, f"{stem}.srt")
+        transcript_text = ''
+        if os.path.isfile(srt_path):
+            with open(srt_path, 'r', encoding='utf-8', errors='replace') as f:
+                lines = f.readlines()
+                text_lines = [l.strip() for l in lines
+                             if l.strip() and not l.strip().isdigit()
+                             and '-->' not in l]
+                transcript_text = ' '.join(text_lines)
+
+        duration = _get_video_duration(clip_path)
+
+        # Try NVIDIA AI
+        llm_config = LLMConfig.from_env()
+        ai_generated = False
+        title, description, tags = filename, '', []
+
+        if llm_config.nvidia_api_key:
+            try:
+                from openai import OpenAI
+                client = OpenAI(
+                    base_url="https://integrate.api.nvidia.com/v1",
+                    api_key=llm_config.nvidia_api_key,
+                )
+                prompt = f"""You are a YouTube Shorts optimization expert. Generate metadata for a short video clip to MAXIMIZE reach, views, and engagement.
+
+Clip info:
+- Filename: {filename}
+- Duration: {int(duration)} seconds
+- Clip {idx+1} of {len(clip_files)}
+- Transcript/content: {transcript_text[:1200] if transcript_text else 'No transcript available. Generate based on filename.'}
+
+Generate the following in JSON format:
+{{
+    "title": "Catchy, click-worthy title (max 80 chars). Use power words, curiosity gaps, or emotional hooks.",
+    "description": "Engaging description (max 300 chars). Include context and #Shorts at the end.",
+    "tags": ["tag1", "tag2", ...] (10-15 highly relevant tags for discoverability)
+}}
+
+Rules:
+- Title must be scroll-stopping and unique for this specific clip
+- Output ONLY valid JSON, nothing else"""
+
+                response = client.chat.completions.create(
+                    model=llm_config.nvidia_model,
+                    messages=[
+                        {"role": "system", "content": "You are a viral content analyst. Respond only with valid JSON."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.7,
+                    max_tokens=1024,
+                )
+                raw = response.choices[0].message.content.strip()
+                if raw.startswith("```"):
+                    raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+                if raw.endswith("```"):
+                    raw = raw[:-3].strip()
+
+                parsed = json.loads(raw)
+                title = parsed.get('title', filename)[:100]
+                description = parsed.get('description', '')[:5000]
+                tags = parsed.get('tags', [])[:15]
+                ai_generated = True
+            except Exception as e:
+                logger.warning(f"AI metadata failed for {filename}: {e}")
+
+        if not ai_generated:
+            meta = youtube_uploader.generate_clip_metadata(
+                clip_info={'hook_text': transcript_text[:200], 'duration': duration},
+                source_title=filename,
+                clip_number=idx + 1, total_clips=len(clip_files),
+            )
+            title, description, tags = meta['title'], meta['description'], meta['tags']
+
+        results.append({
+            'filename': filename,
+            'title': title,
+            'description': description,
+            'tags': tags,
+            'ai_generated': ai_generated,
+        })
+
+    return jsonify({'clips': results, 'total': len(results)})
+
+
 @app.route('/api/youtube/upload-single', methods=['POST'])
 def youtube_upload_single():
     """Upload a single clip to YouTube with user-approved metadata."""
@@ -1449,25 +1664,32 @@ def _youtube_upload_job(upload_job_id, clip_dir, clip_files, privacy, category,
         jobs[upload_job_id]['current_file'] = filename
         jobs[upload_job_id]['message'] = f'Uploading {i+1}/{total}: {filename}'
 
-        # Get metadata — either from clips_meta or auto-generate
+        # Get metadata — either from AI-generated clips_meta or auto-generate
         clip_info = {}
         if clips_meta and i < len(clips_meta):
             clip_info = clips_meta[i]
 
-        meta = youtube_uploader.generate_clip_metadata(
-            clip_info=clip_info,
-            source_title=source_title,
-            clip_number=i + 1,
-            total_clips=total,
-        )
+        # If AI-generated metadata is present, use it directly
+        if clip_info.get('title'):
+            title = clip_info['title']
+            description = clip_info.get('description', '')
+            clip_tags = clip_info.get('tags', [])
+            if isinstance(clip_tags, str):
+                clip_tags = [t.strip() for t in clip_tags.split(',') if t.strip()]
+        else:
+            meta = youtube_uploader.generate_clip_metadata(
+                clip_info=clip_info,
+                source_title=source_title,
+                clip_number=i + 1,
+                total_clips=total,
+            )
+            title = meta['title']
+            description = meta['description']
+            clip_tags = meta['tags']
 
-        # Allow custom tag override
+        # Merge in extra tags from the form
         if custom_tags:
-            meta['tags'] = list(set(meta['tags'] + custom_tags))[:15]
-
-        # Use custom title if provided in clip_info
-        title = clip_info.get('custom_title') or meta['title']
-        description = clip_info.get('custom_description') or meta['description']
+            clip_tags = list(set(clip_tags + custom_tags))[:15]
 
         def _progress(sent, total_bytes):
             if total_bytes > 0:
@@ -1482,7 +1704,7 @@ def _youtube_upload_job(upload_job_id, clip_dir, clip_files, privacy, category,
             file_path=file_path,
             title=title,
             description=description,
-            tags=meta['tags'],
+            tags=clip_tags,
             category=category,
             privacy=privacy,
             made_for_kids=made_for_kids,

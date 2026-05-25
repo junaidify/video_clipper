@@ -213,7 +213,7 @@ def split_sequentially(video_path: str, output_dir: str,
                 f"[bg_in]scale={tw}:{th}:force_original_aspect_ratio=increase,"
                 f"crop={tw}:{th},gblur=sigma=40,eq=brightness=-0.08[bg];"
                 f"[fg_in]scale={tw}:{th}:force_original_aspect_ratio=decrease,"
-                f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=black@0[fg];"
+                f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=black[fg];"
                 f"[bg][fg]overlay=(W-w)/2:(H-h)/2:format=auto[vout]"
             )
             cmd.extend(["-filter_complex", filter_complex])
