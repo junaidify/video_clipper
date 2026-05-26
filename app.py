@@ -836,6 +836,13 @@ def serve_clip(job_id, filename):
     return send_from_directory(clip_dir, filename)
 
 
+@app.route('/library-file/<filename>')
+def serve_library_file(filename):
+    """Serve a file from the video library folder (e.g. narrated videos)."""
+    lib_folder = app.config['LIBRARY_FOLDER']
+    return send_from_directory(lib_folder, filename)
+
+
 @app.route('/api/clips/list/<job_id>')
 def list_clips_in_dir(job_id):
     """List all clip files in a job/clips directory."""
@@ -1228,6 +1235,215 @@ def upload_cookies():
         'youtube_entries': len(yt_entries),
         'total_lines': len(lines),
     })
+
+
+# ═══════════════════════════════════════════════════
+#  AI COMMENTARY (Narration / Voiceover)
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/commentary/voices')
+def commentary_voices():
+    """List available TTS voices."""
+    from tts_engine import get_available_voices
+    return jsonify({'voices': get_available_voices()})
+
+
+@app.route('/api/commentary/generate', methods=['POST'])
+def commentary_generate():
+    """
+    Generate commentary script + synthesize TTS + mix with video.
+    Full pipeline in one background job.
+    """
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    video_id = data.get('video_id', '')  # for library videos
+    voice = data.get('voice', 'guy_narrator')
+    style = data.get('style', 'narration')
+    mode = data.get('mode', 'replace')          # 'replace' or 'mix'
+    original_volume = float(data.get('original_volume', 0.2))
+    rate = data.get('rate', '+0%')
+    pitch = data.get('pitch', '+0Hz')
+    custom_prompt = data.get('custom_prompt', '')
+    whisper_model = data.get('whisper_model', 'base')
+
+    # Resolve video path
+    video_path = None
+    if job_id and filename:
+        clip_dir = _find_job_dir(job_id)
+        candidate = os.path.join(clip_dir, filename)
+        if os.path.isfile(candidate):
+            video_path = candidate
+    elif video_id:
+        entry = video_library.get_video(video_id)
+        if entry and os.path.isfile(entry.file_path):
+            video_path = entry.file_path
+
+    if not video_path:
+        return jsonify({'error': 'Video file not found'}), 400
+
+    commentary_job_id = str(uuid.uuid4())[:8]
+    jobs[commentary_job_id] = {
+        'status': 'starting',
+        'progress': 0,
+        'message': 'Initializing commentary pipeline...',
+        'result': None,
+        'error': None,
+    }
+
+    thread = threading.Thread(
+        target=_commentary_job,
+        args=(commentary_job_id, video_path, voice, style, mode,
+              original_volume, rate, pitch, custom_prompt, whisper_model),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({'job_id': commentary_job_id})
+
+
+@app.route('/api/commentary/status/<cjob_id>')
+def commentary_status(cjob_id):
+    """Poll commentary job progress."""
+    job = jobs.get(cjob_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
+
+
+def _commentary_job(cjob_id, video_path, voice, style, mode,
+                    original_volume, rate, pitch, custom_prompt, whisper_model):
+    """Background job: transcribe → generate script → TTS → mix."""
+    try:
+        # Step 1: Transcribe (or use cached)
+        jobs[cjob_id]['status'] = 'transcribing'
+        jobs[cjob_id]['progress'] = 10
+        jobs[cjob_id]['message'] = 'Transcribing video...'
+
+        from transcriber import transcribe
+
+        transcript = transcribe(video_path, model_size=whisper_model)
+
+        if not transcript or not transcript.segments:
+            jobs[cjob_id]['error'] = 'Transcription failed or empty'
+            jobs[cjob_id]['status'] = 'error'
+            return
+
+        jobs[cjob_id]['progress'] = 30
+        jobs[cjob_id]['message'] = f'Transcribed: {len(transcript.segments)} segments'
+
+        # Step 2: Generate commentary script via LLM
+        jobs[cjob_id]['status'] = 'generating'
+        jobs[cjob_id]['progress'] = 40
+        jobs[cjob_id]['message'] = 'AI generating narration script...'
+
+        from commentary import generate_commentary
+        from llm_analyzer import LLMConfig
+
+        llm_config = LLMConfig.from_env()
+        transcript_dicts = [
+            {"start": s.start, "end": s.end, "text": s.text}
+            for s in transcript.segments
+        ]
+
+        script = generate_commentary(
+            transcript_segments=transcript_dicts,
+            video_duration=transcript.duration,
+            style=style,
+            custom_prompt=custom_prompt,
+            nvidia_api_key=llm_config.nvidia_api_key,
+            nvidia_model=llm_config.nvidia_model,
+        )
+
+        jobs[cjob_id]['progress'] = 55
+        jobs[cjob_id]['message'] = f'Script ready: {len(script.segments)} segments, ~{len(script.full_text.split())} words'
+        jobs[cjob_id]['script'] = script.to_dict()
+
+        # Step 3: Synthesize TTS
+        jobs[cjob_id]['status'] = 'synthesizing'
+        jobs[cjob_id]['progress'] = 65
+        jobs[cjob_id]['message'] = 'Generating voiceover audio...'
+
+        from tts_engine import synthesize_commentary
+
+        # Output dir alongside the source video
+        video_dir = os.path.dirname(video_path)
+        video_stem = Path(video_path).stem
+        commentary_dir = os.path.join(video_dir, f"{video_stem}_commentary")
+
+        seg_dicts = [s.to_dict() for s in script.segments]
+        tts_result = synthesize_commentary(
+            commentary_segments=seg_dicts,
+            output_dir=commentary_dir,
+            voice_key=voice,
+            rate=rate,
+            pitch=pitch,
+            video_duration=transcript.duration,
+        )
+
+        if not tts_result.success:
+            jobs[cjob_id]['error'] = f'TTS failed: {tts_result.error}'
+            jobs[cjob_id]['status'] = 'error'
+            return
+
+        jobs[cjob_id]['progress'] = 80
+        jobs[cjob_id]['message'] = f'Voice synthesized: {tts_result.duration:.1f}s audio'
+
+        # Step 4: Mix audio with video
+        jobs[cjob_id]['status'] = 'mixing'
+        jobs[cjob_id]['progress'] = 85
+        jobs[cjob_id]['message'] = f'Mixing audio ({mode})...'
+
+        from audio_mixer import mix_commentary
+
+        output_filename = f"{video_stem}_narrated.mp4"
+        output_path = os.path.join(video_dir, output_filename)
+
+        mix_result = mix_commentary(
+            video_path=video_path,
+            commentary_audio_path=tts_result.audio_path,
+            output_path=output_path,
+            mode=mode,
+            original_volume=original_volume,
+        )
+
+        if not mix_result.success:
+            jobs[cjob_id]['error'] = f'Audio mixing failed: {mix_result.error}'
+            jobs[cjob_id]['status'] = 'error'
+            return
+
+        # Build result — determine serving URL
+        # If this is a clip (in clips_output), build the URL accordingly
+        result_data = {
+            'output_path': output_path,
+            'output_filename': output_filename,
+            'duration': mix_result.duration,
+            'mode': mode,
+            'voice': voice,
+            'script_segments': len(script.segments),
+            'word_count': len(script.full_text.split()),
+        }
+
+        # Try to build a serveable URL
+        clips_root = app.config.get('CLIPS_FOLDER', '')
+        lib_root = app.config.get('LIBRARY_FOLDER', '')
+        if clips_root and output_path.startswith(clips_root):
+            rel = os.path.relpath(output_path, clips_root)
+            parts = rel.replace('\\', '/').split('/')
+            if len(parts) >= 2:
+                result_data['url'] = f'/clips/{parts[-2]}/{parts[-1]}'
+        elif lib_root and output_path.startswith(lib_root):
+            result_data['url'] = f'/library-file/{output_filename}'
+
+        jobs[cjob_id]['result'] = result_data
+        jobs[cjob_id]['progress'] = 100
+        jobs[cjob_id]['message'] = f'Commentary complete! {output_filename}'
+        jobs[cjob_id]['status'] = 'completed'
+
+    except Exception as e:
+        logger.error(f"Commentary job failed: {e}", exc_info=True)
+        jobs[cjob_id]['error'] = str(e)
+        jobs[cjob_id]['status'] = 'error'
 
 
 # ═══════════════════════════════════════════════════

@@ -146,7 +146,8 @@ def transcribe_with_whisper(video_path: str, model_size: str = "base") -> list:
         ]
         subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', check=True)
 
-        model = whisper.load_model(model_size, device="cpu")
+        from transcriber import resolve_device
+        model = whisper.load_model(model_size, device=resolve_device("auto"))
         result = model.transcribe(audio_path, word_timestamps=True, verbose=False)
 
         words = []

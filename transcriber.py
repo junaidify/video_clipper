@@ -14,6 +14,26 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+def resolve_device(device: str = "auto") -> str:
+    """
+    Resolve 'auto' to the best available device.
+    Returns 'cuda' if an NVIDIA GPU with CUDA is available, else 'cpu'.
+    """
+    if device and device != "auto":
+        return device
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            logger.info(f"GPU detected: {gpu_name} — using CUDA")
+            return "cuda"
+    except ImportError:
+        pass
+    logger.info("No CUDA GPU detected — using CPU")
+    return "cpu"
+
+
 # ─── Whisper Model Cache ───
 # Loading the model takes 5-15 seconds. Cache it globally so subsequent
 # transcriptions reuse the already-loaded model instantly.
@@ -103,7 +123,7 @@ def extract_audio(video_path: str, audio_path: str) -> str:
 
 def transcribe(video_path: str, model_size: str = "base",
                language: Optional[str] = None,
-               device: str = "cpu") -> Transcript:
+               device: str = "auto") -> Transcript:
     """
     Transcribe video using OpenAI Whisper.
 
@@ -111,11 +131,12 @@ def transcribe(video_path: str, model_size: str = "base",
         video_path: Path to the input video file
         model_size: Whisper model size (tiny/base/small/medium/large)
         language: Language code or None for auto-detect
-        device: 'cpu' or 'cuda'
+        device: 'auto' (GPU if available), 'cpu', or 'cuda'
 
     Returns:
         Transcript object with segments and timestamps
     """
+    device = resolve_device(device)
     try:
         import whisper
     except ImportError:

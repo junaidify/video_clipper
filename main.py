@@ -208,8 +208,8 @@ Examples:
                         help="Whisper model size (default: base)")
     parser.add_argument("--language", default=None,
                         help="Language code (e.g., 'en'). Auto-detect if not set")
-    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"],
-                        help="Device for Whisper (default: cpu)")
+    parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"],
+                        help="Device for Whisper (default: auto — uses GPU if available)")
 
     # Analysis
     parser.add_argument("--max-clips", type=int, default=10,

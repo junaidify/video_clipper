@@ -569,9 +569,9 @@
         .yt-upload-item a { color: var(--lime); text-decoration: none; font-family: var(--mono); font-size: 0.78rem; }
         .yt-upload-item a:hover { text-decoration: underline; }
         .yt-connect-box {
-            display: flex; align-items: center; gap: 14px; padding: 16px;
+            display: flex; align-items: center; gap: 14px; padding: 16px 18px;
             background: var(--bg-elevated); border: 1px solid var(--border);
-            border-radius: 10px; margin-bottom: 16px;
+            border-radius: 10px; margin-bottom: 22px;
         }
         .yt-connect-box .yt-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
         .yt-connect-box .yt-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
@@ -1854,7 +1854,7 @@
             <button class="modal-close" onclick="closeYoutubeUpload()">&times;</button>
         </div>
         <div class="modal-body" style="padding:28px">
-            <div class="yt-connect-box" id="yt-connect-box" style="margin-bottom:24px">
+            <div class="yt-connect-box" id="yt-connect-box">
                 <div class="yt-dot disconnected" id="yt-connect-dot"></div>
                 <div style="flex:1">
                     <div id="yt-connect-label" style="font-size:0.88rem;color:var(--text-primary)">Checking...</div>
@@ -1943,6 +1943,155 @@
     </div>
 </div>
 
+<!-- ── AI Commentary / Narration Modal ── -->
+<div class="modal-overlay" id="commentary-modal">
+    <div class="modal" style="max-width:600px">
+        <div class="modal-header">
+            <h3 style="display:flex;align-items:center;gap:10px">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                AI COMMENTARY
+            </h3>
+            <button class="modal-close" onclick="closeCommentaryModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:28px">
+            <!-- Source info -->
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;padding:14px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10,8 16,12 10,16" fill="var(--text-secondary)" stroke="none"/></svg>
+                <span id="cm-filename" style="font-family:var(--mono);font-size:0.82rem;color:var(--text-primary);word-break:break-all"></span>
+            </div>
+
+            <!-- Voice selection -->
+            <div class="form-group" style="margin-bottom:20px">
+                <label>VOICE</label>
+                <select id="cm-voice" class="select-input" style="padding:10px 14px">
+                    <optgroup label="Deep & Motivational">
+                        <option value="andrew" selected>Andrew (Deep Motivational)</option>
+                        <option value="brian">Brian (Deep Commanding)</option>
+                        <option value="christopher">Christopher (Authoritative)</option>
+                        <option value="eric">Eric (Deep Mature)</option>
+                        <option value="roger">Roger (Deep Cinematic)</option>
+                        <option value="steffan">Steffan (Calm & Powerful)</option>
+                        <option value="michelle">Michelle (Female Deep)</option>
+                    </optgroup>
+                    <optgroup label="Male Narration">
+                        <option value="guy_narrator">Guy (US Male)</option>
+                        <option value="davis">Davis (US Male Deep)</option>
+                        <option value="tony">Tony (US Male Warm)</option>
+                        <option value="ryan">Ryan (British Male)</option>
+                    </optgroup>
+                    <optgroup label="Female Narration">
+                        <option value="jenny">Jenny (US Female)</option>
+                        <option value="aria">Aria (US Female Warm)</option>
+                        <option value="sara">Sara (US Female Clear)</option>
+                        <option value="sonia">Sonia (British Female)</option>
+                    </optgroup>
+                    <optgroup label="Hindi">
+                        <option value="madhur">Madhur (Hindi Male)</option>
+                        <option value="swara">Swara (Hindi Female)</option>
+                    </optgroup>
+                    <optgroup label="Urdu">
+                        <option value="asad">Asad (Urdu Male)</option>
+                        <option value="uzma">Uzma (Urdu Female)</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <!-- Style + Audio Mode row -->
+            <div style="display:flex;gap:14px;margin-bottom:20px">
+                <div class="form-group" style="flex:1;margin-bottom:0">
+                    <label>NARRATION STYLE</label>
+                    <select id="cm-style" class="select-input" style="padding:10px 14px">
+                        <option value="narration" selected>Documentary Narrator</option>
+                        <option value="sports">Sports Commentary</option>
+                        <option value="summary">Summary Recap</option>
+                        <option value="custom">Custom Prompt</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1;margin-bottom:0">
+                    <label>AUDIO MODE</label>
+                    <select id="cm-mode" class="select-input" onchange="onCmModeChange()" style="padding:10px 14px">
+                        <option value="replace">Replace Original</option>
+                        <option value="mix">Mix (Duck Original)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Volume slider (shown only in mix mode) -->
+            <div id="cm-volume-section" style="display:none;margin-bottom:20px;padding:16px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <label style="font-size:0.78rem;color:var(--text-secondary);letter-spacing:0.08em;font-family:var(--display);margin:0">ORIGINAL AUDIO VOLUME</label>
+                    <span id="cm-vol-value" style="font-family:var(--mono);font-size:0.82rem;color:var(--accent)">20%</span>
+                </div>
+                <input type="range" id="cm-volume" min="0" max="100" value="20" oninput="document.getElementById('cm-vol-value').textContent=this.value+'%'" style="width:100%;accent-color:var(--accent)">
+                <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-ghost);margin-top:4px">
+                    <span>Muted</span><span>Full volume</span>
+                </div>
+            </div>
+
+            <!-- Custom prompt (shown only when style = custom) -->
+            <div id="cm-custom-section" style="display:none;margin-bottom:20px">
+                <div class="form-group" style="margin-bottom:0">
+                    <label>CUSTOM INSTRUCTIONS</label>
+                    <textarea id="cm-custom-prompt" rows="3" placeholder="E.g., Narrate like a nature documentary about technology..." style="font-size:0.84rem;resize:vertical;min-height:70px;font-family:inherit;padding:10px 14px"></textarea>
+                </div>
+            </div>
+
+            <!-- Speed + Pitch row -->
+            <div style="display:flex;gap:14px;margin-bottom:24px">
+                <div class="form-group" style="flex:1;margin-bottom:0">
+                    <label>SPEECH SPEED</label>
+                    <select id="cm-rate" class="select-input" style="padding:10px 14px">
+                        <option value="-10%">Slow</option>
+                        <option value="+0%" selected>Normal</option>
+                        <option value="+10%">Fast</option>
+                        <option value="+20%">Very Fast</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1;margin-bottom:0">
+                    <label>WHISPER MODEL</label>
+                    <select id="cm-whisper" class="select-input" style="padding:10px 14px">
+                        <option value="tiny">Tiny (fastest)</option>
+                        <option value="base" selected>Base</option>
+                        <option value="small">Small</option>
+                        <option value="medium">Medium (best)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Generate button -->
+            <div style="padding:20px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px">
+                <button class="btn btn-full" id="cm-generate-btn" onclick="startCommentary()" style="font-size:0.92rem;padding:14px 0;border-radius:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);border:none;color:#fff;font-weight:600">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                    Generate Commentary
+                </button>
+            </div>
+
+            <!-- Progress -->
+            <div id="cm-progress" style="display:none;margin-top:22px">
+                <div class="progress-wrap">
+                    <div class="progress-bar"><div class="progress-fill" id="cm-progress-fill" style="width:0%"></div></div>
+                    <div class="progress-label" id="cm-progress-label">Starting...</div>
+                </div>
+            </div>
+
+            <!-- Result -->
+            <div id="cm-result" style="display:none;margin-top:22px;padding:18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--green)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <span style="font-size:0.92rem;color:var(--green);font-weight:600">Commentary Generated!</span>
+                </div>
+                <div id="cm-result-info" style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7"></div>
+                <div id="cm-result-player" style="margin-top:14px"></div>
+            </div>
+
+            <!-- Error -->
+            <div id="cm-error" style="display:none;margin-top:22px;padding:16px 18px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);border-radius:10px">
+                <span style="color:#ef4444;font-size:0.84rem" id="cm-error-text"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ── Single Clip YouTube Upload Preview Modal ── -->
 <div class="modal-overlay" id="yt-single-modal">
     <div class="modal" style="max-width:580px">
@@ -1953,16 +2102,16 @@
             </h3>
             <button class="modal-close" onclick="closeSingleYtModal()">&times;</button>
         </div>
-        <div class="modal-body" style="padding:20px 24px 24px">
+        <div class="modal-body" style="padding:28px">
             <!-- File info -->
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:12px 16px;background:var(--bg-card);border:1px solid var(--border-hover);border-radius:10px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;padding:14px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10,8 16,12 10,16" fill="var(--text-secondary)" stroke="none"/></svg>
                 <span id="yts-filename" style="font-family:var(--mono);font-size:0.82rem;color:var(--text-primary);word-break:break-all"></span>
             </div>
 
             <!-- AI Generate button -->
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-                <button class="btn btn-sm" id="yts-ai-btn" onclick="generateAiMetadata()" style="background:linear-gradient(135deg,#76b947,#4285f4);color:#fff;border:none;font-size:0.8rem;padding:8px 16px;border-radius:8px;display:flex;align-items:center;gap:7px;font-weight:600;letter-spacing:0.3px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;padding:14px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                <button class="btn btn-sm" id="yts-ai-btn" onclick="generateAiMetadata()" style="background:linear-gradient(135deg,#76b947,#4285f4);color:#fff;border:none;font-size:0.8rem;padding:10px 18px;border-radius:8px;display:flex;align-items:center;gap:7px;font-weight:600;letter-spacing:0.3px">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z"/></svg>
                     Generate with AI
                 </button>
@@ -1970,27 +2119,27 @@
             </div>
 
             <!-- Title -->
-            <div class="form-group" style="margin-bottom:16px">
+            <div class="form-group" style="margin-bottom:20px">
                 <label>TITLE</label>
                 <input type="text" id="yts-title" maxlength="100" placeholder="Enter a catchy title..." style="font-size:0.86rem;padding:10px 14px">
                 <div style="text-align:right;font-size:0.7rem;color:var(--text-dim);margin-top:4px"><span id="yts-title-count">0</span>/100</div>
             </div>
 
             <!-- Description -->
-            <div class="form-group" style="margin-bottom:16px">
+            <div class="form-group" style="margin-bottom:20px">
                 <label>DESCRIPTION</label>
                 <textarea id="yts-description" rows="4" maxlength="5000" placeholder="Describe your video..." style="font-size:0.84rem;resize:vertical;min-height:88px;font-family:inherit;padding:10px 14px"></textarea>
                 <div style="text-align:right;font-size:0.7rem;color:var(--text-dim);margin-top:4px"><span id="yts-desc-count">0</span>/5000</div>
             </div>
 
             <!-- Tags -->
-            <div class="form-group" style="margin-bottom:16px">
+            <div class="form-group" style="margin-bottom:20px">
                 <label>TAGS <span style="font-weight:400;color:var(--text-dim)">(comma separated)</span></label>
                 <input type="text" id="yts-tags" placeholder="shorts, viral, trending" style="font-size:0.84rem;padding:10px 14px">
             </div>
 
             <!-- Privacy + Category row -->
-            <div style="display:flex;gap:14px;margin-bottom:16px">
+            <div style="display:flex;gap:14px;margin-bottom:20px">
                 <div class="form-group" style="flex:1;margin-bottom:0">
                     <label>PRIVACY</label>
                     <select id="yts-privacy" class="select-input" onchange="onYtsPrivacyChange()" style="padding:10px 14px">
@@ -2017,45 +2166,47 @@
             </div>
 
             <!-- Schedule toggle -->
-            <div id="yts-schedule-section" style="margin-bottom:20px">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div id="yts-schedule-section" style="margin-bottom:24px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
                     <input type="checkbox" id="yts-schedule-toggle" style="width:auto" onchange="onScheduleToggle()">
                     <label for="yts-schedule-toggle" style="font-size:0.84rem;color:var(--text-primary);cursor:pointer;margin:0;display:flex;align-items:center;gap:7px">
                         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         Schedule for later
                     </label>
                 </div>
-                <div id="yts-schedule-picker" style="display:none;padding:14px 16px;background:var(--bg-card);border:1px solid var(--border-hover);border-radius:10px">
+                <div id="yts-schedule-picker" style="display:none;padding:16px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
                     <div style="display:flex;gap:14px;align-items:end">
                         <div class="form-group" style="flex:1;margin:0">
                             <label style="font-size:0.72rem;color:var(--text-secondary)">DATE</label>
-                            <input type="date" id="yts-schedule-date" style="font-size:0.84rem;padding:9px 12px">
+                            <input type="date" id="yts-schedule-date" style="font-size:0.84rem;padding:10px 14px">
                         </div>
                         <div class="form-group" style="flex:1;margin:0">
                             <label style="font-size:0.72rem;color:var(--text-secondary)">TIME</label>
-                            <input type="time" id="yts-schedule-time" value="12:00" style="font-size:0.84rem;padding:9px 12px">
+                            <input type="time" id="yts-schedule-time" value="12:00" style="font-size:0.84rem;padding:10px 14px">
                         </div>
                     </div>
-                    <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:10px">
+                    <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:12px">
                         Video uploads as private and auto-publishes at the scheduled time (your local timezone)
                     </div>
                 </div>
             </div>
 
             <!-- Upload / Schedule button -->
-            <button class="btn btn-yt btn-full" id="yts-upload-btn" onclick="confirmSingleUpload()" style="font-size:0.92rem;padding:13px 0;border-radius:10px;margin-top:4px">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
-                <span id="yts-upload-btn-text">Upload to YouTube</span>
-            </button>
+            <div style="padding:20px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px">
+                <button class="btn btn-yt btn-full" id="yts-upload-btn" onclick="confirmSingleUpload()" style="font-size:0.92rem;padding:14px 0;border-radius:10px">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+                    <span id="yts-upload-btn-text">Upload to YouTube</span>
+                </button>
+            </div>
 
             <!-- Upload progress (shown during upload) -->
-            <div id="yts-uploading" style="display:none;text-align:center;padding:24px 0">
+            <div id="yts-uploading" style="display:none;text-align:center;padding:28px 0">
                 <svg viewBox="0 0 24 24" width="32" height="32" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="#cc0000" fill="none" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
-                <div style="margin-top:12px;font-size:0.88rem;color:var(--text-secondary)">Uploading to YouTube...</div>
+                <div style="margin-top:14px;font-size:0.88rem;color:var(--text-secondary)">Uploading to YouTube...</div>
             </div>
 
             <!-- Upload result -->
-            <div id="yts-result" style="display:none;text-align:center;padding:24px 0">
+            <div id="yts-result" style="display:none;text-align:center;padding:28px 0">
                 <div id="yts-result-content"></div>
             </div>
         </div>
@@ -2239,7 +2390,13 @@ async function loadLibrary() {
                     <span class="tag tag-green">${formatDuration(v.duration)}</span>
                     <span class="tag tag-yellow">${v.file_size_mb} MB</span>
                 </div>
-                <div style="color:var(--text-ghost);font-size:0.72rem;margin-top:10px;font-family:var(--mono)">${v.added_at?.split('T')[0] || ''}</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+                    <span style="color:var(--text-ghost);font-size:0.72rem;font-family:var(--mono)">${v.added_at?.split('T')[0] || ''}</span>
+                    <button class="clip-act-btn" onclick="event.stopPropagation();openCommentaryModal('','','${v.video_id}')" style="font-size:0.68rem;padding:4px 10px;color:var(--accent);border-color:rgba(99,102,241,0.3)" title="AI Commentary">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                        Narrate
+                    </button>
+                </div>
             </div>
         `).join('');
     } catch(e) { console.error(e); }
@@ -2674,7 +2831,7 @@ async function openFolder(idx) {
                             <span class="occ-size">${f.size_mb} MB</span>
                             <a class="occ-dl" href="${f.url}" download="${escHtml(f.filename)}" title="Download"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
                         </div>
-                        <div style="padding:0 14px 14px;display:flex;gap:6px;flex-wrap:wrap">
+                        <div style="padding:6px 14px 14px;display:flex;gap:8px;flex-wrap:wrap">
                             <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
                                 <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="14" x2="23" y2="14"/></svg>
                                 Subtitles
@@ -2690,6 +2847,10 @@ async function openFolder(idx) {
                             <button class="clip-act-btn clip-yt-btn" onclick="uploadSingleToYoutube('${jobId}','${f.filename}',this)" style="font-size:0.72rem;padding:6px 12px" title="Upload to YouTube">
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="#cc0000" style="vertical-align:-2px"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
                                 YouTube
+                            </button>
+                            <button class="clip-act-btn" onclick="openCommentaryModal('${jobId}','${f.filename}')" style="font-size:0.72rem;padding:6px 12px;color:var(--accent);border-color:rgba(99,102,241,0.3)" title="AI Commentary">
+                                <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                                Narrate
                             </button>
                         </div>
                     </div>
@@ -2739,6 +2900,10 @@ function clipActionsHtml(jobId, filename) {
         <button class="clip-act-btn clip-yt-btn" onclick="uploadSingleToYoutube('${jobId}','${filename}',this)" title="Upload to YouTube">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="#cc0000" style="vertical-align:-2px"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
             YouTube
+        </button>
+        <button class="clip-act-btn" onclick="openCommentaryModal('${jobId}','${filename}')" style="color:var(--accent);border-color:rgba(99,102,241,0.3)" title="AI Commentary">
+            <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+            Narrate
         </button>
         <button class="clip-act-btn" onclick="deleteClipFile('${jobId}','${filename}',this)" style="color:#ef4444;border-color:rgba(220,38,38,0.3)" title="Delete clip">
             <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -3578,6 +3743,125 @@ async function confirmSingleUpload() {
         document.getElementById('yts-upload-btn').style.display = '';
         alert('Upload error: ' + e.message);
     }
+}
+
+// ═══ AI Commentary Functions ═══
+var _cmJobId = '', _cmFilename = '', _cmVideoId = '', _cmPollTimer = null;
+
+function openCommentaryModal(jobId, filename, videoId) {
+    _cmJobId = jobId || '';
+    _cmFilename = filename || '';
+    _cmVideoId = videoId || '';
+
+    var displayName = filename || 'Library video';
+    document.getElementById('cm-filename').textContent = displayName;
+
+    // Reset state
+    document.getElementById('cm-generate-btn').disabled = false;
+    document.getElementById('cm-progress').style.display = 'none';
+    document.getElementById('cm-result').style.display = 'none';
+    document.getElementById('cm-error').style.display = 'none';
+    document.getElementById('cm-progress-fill').style.width = '0%';
+    document.getElementById('cm-progress-label').textContent = 'Starting...';
+
+    document.getElementById('commentary-modal').classList.add('active');
+}
+
+function closeCommentaryModal() {
+    document.getElementById('commentary-modal').classList.remove('active');
+    if (_cmPollTimer) { clearInterval(_cmPollTimer); _cmPollTimer = null; }
+}
+
+function onCmModeChange() {
+    var mode = document.getElementById('cm-mode').value;
+    document.getElementById('cm-volume-section').style.display = mode === 'mix' ? '' : 'none';
+}
+
+// Show/hide custom prompt based on style
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'cm-style') {
+        document.getElementById('cm-custom-section').style.display = e.target.value === 'custom' ? '' : 'none';
+    }
+});
+
+async function startCommentary() {
+    var btn = document.getElementById('cm-generate-btn');
+    btn.disabled = true;
+    document.getElementById('cm-progress').style.display = '';
+    document.getElementById('cm-result').style.display = 'none';
+    document.getElementById('cm-error').style.display = 'none';
+
+    var body = {
+        job_id: _cmJobId,
+        filename: _cmFilename,
+        video_id: _cmVideoId,
+        voice: document.getElementById('cm-voice').value,
+        style: document.getElementById('cm-style').value,
+        mode: document.getElementById('cm-mode').value,
+        original_volume: parseInt(document.getElementById('cm-volume').value) / 100,
+        rate: document.getElementById('cm-rate').value,
+        whisper_model: document.getElementById('cm-whisper').value,
+        custom_prompt: document.getElementById('cm-custom-prompt')?.value || '',
+    };
+
+    try {
+        var res = await fetch('/api/commentary/generate', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+        });
+        var data = await res.json();
+        if (data.error) {
+            document.getElementById('cm-error').style.display = '';
+            document.getElementById('cm-error-text').textContent = data.error;
+            btn.disabled = false;
+            return;
+        }
+
+        _cmPollTimer = setInterval(function() { pollCommentary(data.job_id); }, 1500);
+    } catch(e) {
+        document.getElementById('cm-error').style.display = '';
+        document.getElementById('cm-error-text').textContent = e.message;
+        btn.disabled = false;
+    }
+}
+
+async function pollCommentary(jobId) {
+    try {
+        var res = await fetch('/api/commentary/status/' + jobId);
+        var d = await res.json();
+
+        document.getElementById('cm-progress-fill').style.width = (d.progress || 0) + '%';
+        document.getElementById('cm-progress-label').textContent = d.message || d.status || '...';
+
+        if (d.status === 'completed') {
+            clearInterval(_cmPollTimer); _cmPollTimer = null;
+            document.getElementById('cm-progress').style.display = 'none';
+            document.getElementById('cm-result').style.display = '';
+
+            var r = d.result || {};
+            var info = 'Mode: <strong>' + (r.mode === 'replace' ? 'Replaced audio' : 'Mixed with original') + '</strong><br>';
+            info += 'Voice: <strong>' + (r.voice || 'default') + '</strong> &middot; ';
+            info += r.script_segments + ' segments &middot; ~' + r.word_count + ' words<br>';
+            info += 'Output: <strong>' + escHtml(r.output_filename || '') + '</strong> (' + (r.duration || 0).toFixed(1) + 's)';
+            document.getElementById('cm-result-info').innerHTML = info;
+
+            // Add video player if URL available
+            if (r.url) {
+                document.getElementById('cm-result-player').innerHTML =
+                    '<video controls preload="metadata" style="width:100%;border-radius:8px;margin-top:8px"><source src="' + r.url + '" type="video/mp4"></video>' +
+                    '<div style="margin-top:10px;text-align:center"><a href="' + r.url + '" download class="btn btn-sm" style="font-size:0.78rem;padding:6px 14px">Download Narrated Video</a></div>';
+            }
+
+            document.getElementById('cm-generate-btn').disabled = false;
+        } else if (d.status === 'error') {
+            clearInterval(_cmPollTimer); _cmPollTimer = null;
+            document.getElementById('cm-progress').style.display = 'none';
+            document.getElementById('cm-error').style.display = '';
+            document.getElementById('cm-error-text').textContent = d.error || 'Commentary generation failed';
+            document.getElementById('cm-generate-btn').disabled = false;
+        }
+    } catch(e) {}
 }
 
 // ═══ Delete & Upload Status Functions ═══
