@@ -18,6 +18,10 @@
             --lime-glow: rgba(202,255,0,0.12);
             --lime-glow-strong: rgba(202,255,0,0.25);
             --lime-subtle: rgba(202,255,0,0.06);
+            --accent: #818cf8;
+            --accent-dim: #6366f1;
+            --accent-glow: rgba(129,140,248,0.15);
+            --text-primary: #e8e8e8;
             --border: #2a2a2a;
             --border-hover: #3a3a3a;
             --border-active: #4a4a4a;
@@ -497,6 +501,32 @@
         }
         .form-group input::placeholder { color: var(--text-ghost); font-weight: 400; }
         .form-group select option { background: #1a1a1a; color: var(--text); }
+        .select-input {
+            width: 100%;
+            padding: 13px 16px;
+            border-radius: var(--radius-xs);
+            border: 1px solid var(--border);
+            background: var(--bg-input);
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: var(--sans);
+            outline: none;
+            transition: all 0.3s var(--ease);
+            -webkit-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            padding-right: 36px;
+        }
+        .select-input:hover { border-color: var(--border-hover); }
+        .select-input:focus {
+            border-color: rgba(202,255,0,0.40);
+            box-shadow: 0 0 0 3px rgba(202,255,0,0.06), 0 0 24px rgba(202,255,0,0.04);
+            background-color: #1a1a1a;
+        }
+        .select-input option { background: #1a1a1a; color: var(--text); }
+        .select-input optgroup { background: #1a1a1a; color: var(--text-secondary); font-weight: 600; }
 
         .checkbox-row {
             display: flex; align-items: center; gap: 10px;
@@ -506,6 +536,92 @@
         .checkbox-row input[type="checkbox"] {
             accent-color: var(--lime);
             width: 18px; height: 18px;
+            cursor: pointer;
+        }
+
+        /* ═══ Custom Toggle Switch ═══ */
+        .toggle-switch {
+            position: relative;
+            width: 44px; height: 24px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input {
+            opacity: 0; width: 0; height: 0; position: absolute;
+        }
+        .toggle-switch .toggle-slider {
+            position: absolute; inset: 0;
+            background: #333;
+            border-radius: 12px;
+            border: 1px solid var(--border-hover);
+            cursor: pointer;
+            transition: all 0.25s var(--ease);
+        }
+        .toggle-switch .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px; height: 18px;
+            left: 2px; top: 50%;
+            transform: translateY(-50%);
+            background: #888;
+            border-radius: 50%;
+            transition: all 0.25s var(--ease);
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background: rgba(202,255,0,0.15);
+            border-color: var(--lime-dim);
+        }
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateY(-50%) translateX(20px);
+            background: var(--lime);
+            box-shadow: 0 0 8px var(--lime-glow-strong);
+        }
+
+        /* ═══ Custom Checkbox (styled) ═══ */
+        .custom-check {
+            position: relative;
+            display: flex; align-items: center; gap: 10px;
+            cursor: pointer;
+        }
+        .custom-check input {
+            opacity: 0; width: 0; height: 0; position: absolute;
+        }
+        .custom-check .checkmark {
+            width: 20px; height: 20px;
+            border: 2px solid #444;
+            border-radius: 5px;
+            background: var(--bg-input);
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s var(--ease);
+            flex-shrink: 0;
+        }
+        .custom-check .checkmark svg {
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.2s var(--ease);
+        }
+        .custom-check input:checked ~ .checkmark {
+            background: var(--lime);
+            border-color: var(--lime);
+        }
+        .custom-check input:checked ~ .checkmark svg {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .custom-check:hover .checkmark {
+            border-color: #666;
+        }
+
+        /* ═══ Dark date/time inputs ═══ */
+        input[type="date"], input[type="time"] {
+            color-scheme: dark;
+            background: var(--bg-input) !important;
+            color: var(--text) !important;
+            border: 1px solid var(--border-hover);
+            border-radius: var(--radius-xs);
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.7) sepia(1) saturate(3) hue-rotate(30deg);
             cursor: pointer;
         }
 
@@ -548,16 +664,30 @@
         .btn-yt {
             background: #cc0000;
             color: #fff;
-            border: 1px solid #cc0000;
+            border: 1px solid rgba(255,255,255,0.08);
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
             font-size: 0.82rem;
             padding: 8px 18px;
         }
-        .btn-yt:hover { background: #e60000; border-color: #e60000; }
-        .btn-yt:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-yt:hover { background: #e60000; box-shadow: 0 4px 20px rgba(204,0,0,0.3); }
+        .btn-yt:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
         .btn-yt svg { flex-shrink: 0; }
+        .btn-yt.btn-full {
+            background: linear-gradient(135deg, #cc0000 0%, #990000 100%);
+            border: 1px solid rgba(255,255,255,0.06);
+            padding: 14px 28px;
+            font-size: 0.95rem;
+            gap: 10px;
+            border-radius: 10px;
+        }
+        .btn-yt.btn-full:hover:not(:disabled) {
+            background: linear-gradient(135deg, #e60000 0%, #b30000 100%);
+            box-shadow: 0 6px 28px rgba(204,0,0,0.35);
+            transform: translateY(-2px);
+        }
         .yt-upload-item {
             display: flex; align-items: center; gap: 12px;
             padding: 10px 14px; background: var(--bg-elevated);
@@ -579,15 +709,20 @@
         .btn-sm { padding: 10px 20px; font-size: 0.84rem; }
         .btn-full {
             width: 100%;
-            padding: 18px 28px;
-            font-size: 0.95rem;
+            padding: 15px 28px;
+            font-size: 1rem;
             border-radius: var(--radius-sm);
             letter-spacing: 0.06em;
             font-weight: 700;
             text-transform: uppercase;
             font-family: var(--display);
-            font-size: 1.15rem;
+            transition: all 0.3s var(--ease);
         }
+        .btn-full:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+        .btn-full:active:not(:disabled) { transform: translateY(0); }
 
         .url-group {
             display: flex;
@@ -738,6 +873,29 @@
         .progress-info { display: flex; justify-content: space-between; margin-top: 10px; font-size: 0.82rem; }
         .progress-info .msg { color: var(--text-dim); font-weight: 400; }
         .progress-info .pct { color: var(--lime); font-weight: 600; font-family: var(--mono); font-size: 0.78rem; }
+
+        /* ═══ Modal Progress Bars ═══ */
+        .progress-wrap { margin-bottom: 14px; }
+        .progress-wrap .progress-bar {
+            height: 6px;
+            background: var(--bg-input);
+            border-radius: 3px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .progress-wrap .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--lime-dim), var(--lime));
+            border-radius: 3px;
+            transition: width 0.5s var(--ease);
+            box-shadow: 0 0 12px var(--lime-glow);
+        }
+        .progress-label {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            margin-top: 10px;
+            font-weight: 400;
+        }
 
         .steps-row { display: flex; gap: 10px; margin-top: 18px; position: relative; z-index: 1; }
         .step {
@@ -1909,15 +2067,18 @@
                     <label>EXTRA TAGS <span style="font-weight:400;color:var(--text-dim)">(added to all clips, comma separated)</span></label>
                     <input type="text" id="yt-tags" placeholder="shorts, clips, viral" style="font-size:0.84rem;padding:10px 14px">
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
-                    <input type="checkbox" id="yt-kids" style="width:auto">
-                    <label for="yt-kids" style="font-size:0.82rem;color:var(--text-secondary);cursor:pointer;margin:0">Made for Kids (COPPA)</label>
+                <div style="margin-bottom:24px">
+                    <label class="custom-check">
+                        <input type="checkbox" id="yt-kids">
+                        <span class="checkmark"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                        <span style="font-size:0.84rem;color:var(--text-secondary)">Made for Kids (COPPA)</span>
+                    </label>
                 </div>
 
                 <!-- Clip count + Upload button -->
                 <div style="padding:20px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px">
                     <div id="yt-clip-count" style="font-size:0.84rem;color:var(--text-secondary);margin-bottom:16px;text-align:center"></div>
-                    <button class="btn btn-yt btn-full" id="yt-start-upload-btn" onclick="startYoutubeUpload()" style="font-size:0.92rem;padding:14px 0;border-radius:10px">
+                    <button class="btn btn-yt btn-full" id="yt-start-upload-btn" onclick="startYoutubeUpload()">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
                         Upload All Clips
                     </button>
@@ -1968,26 +2129,48 @@
                         <option value="andrew" selected>Andrew (Deep Motivational)</option>
                         <option value="brian">Brian (Deep Commanding)</option>
                         <option value="christopher">Christopher (Authoritative)</option>
-                        <option value="eric">Eric (Deep Mature)</option>
                         <option value="roger">Roger (Deep Cinematic)</option>
-                        <option value="steffan">Steffan (Calm & Powerful)</option>
-                        <option value="michelle">Michelle (Female Deep)</option>
                     </optgroup>
-                    <optgroup label="Male Narration">
-                        <option value="guy_narrator">Guy (US Male)</option>
+                    <optgroup label="English Narration">
                         <option value="davis">Davis (US Male Deep)</option>
-                        <option value="tony">Tony (US Male Warm)</option>
+                        <option value="guy_narrator">Guy (US Male)</option>
+                        <option value="aria">Aria (US Female Warm)</option>
                         <option value="ryan">Ryan (British Male)</option>
                     </optgroup>
-                    <optgroup label="Female Narration">
-                        <option value="jenny">Jenny (US Female)</option>
-                        <option value="aria">Aria (US Female Warm)</option>
-                        <option value="sara">Sara (US Female Clear)</option>
-                        <option value="sonia">Sonia (British Female)</option>
+                    <optgroup label="Indian English (Deep)">
+                        <option value="prabhat">Prabhat (Indian Deep Male)</option>
+                        <option value="neerja">Neerja (Indian Female)</option>
                     </optgroup>
-                    <optgroup label="Hindi">
-                        <option value="madhur">Madhur (Hindi Male)</option>
+                    <optgroup label="Hindi (Deep)">
+                        <option value="madhur">Madhur (Hindi Deep Male)</option>
                         <option value="swara">Swara (Hindi Female)</option>
+                    </optgroup>
+                    <optgroup label="Tamil">
+                        <option value="valluvar">Valluvar (Tamil Deep Male)</option>
+                        <option value="pallavi_ta">Pallavi (Tamil Female)</option>
+                    </optgroup>
+                    <optgroup label="Telugu">
+                        <option value="mohan">Mohan (Telugu Deep Male)</option>
+                        <option value="shruti">Shruti (Telugu Female)</option>
+                    </optgroup>
+                    <optgroup label="Bengali">
+                        <option value="bashkar">Bashkar (Bengali Deep Male)</option>
+                        <option value="tanishaa">Tanishaa (Bengali Female)</option>
+                    </optgroup>
+                    <optgroup label="Gujarati">
+                        <option value="niranjan">Niranjan (Gujarati Deep Male)</option>
+                        <option value="dhwani">Dhwani (Gujarati Female)</option>
+                    </optgroup>
+                    <optgroup label="Marathi">
+                        <option value="manohar">Manohar (Marathi Deep Male)</option>
+                        <option value="aarohi">Aarohi (Marathi Female)</option>
+                    </optgroup>
+                    <optgroup label="Kannada">
+                        <option value="gagan">Gagan (Kannada Deep Male)</option>
+                        <option value="sapna">Sapna (Kannada Female)</option>
+                    </optgroup>
+                    <optgroup label="Punjabi">
+                        <option value="gur_hero">Gurdeep (Punjabi Deep Male)</option>
                     </optgroup>
                     <optgroup label="Urdu">
                         <option value="asad">Asad (Urdu Male)</option>
@@ -2060,7 +2243,7 @@
 
             <!-- Generate button -->
             <div style="padding:20px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px">
-                <button class="btn btn-full" id="cm-generate-btn" onclick="startCommentary()" style="font-size:0.92rem;padding:14px 0;border-radius:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);border:none;color:#fff;font-weight:600">
+                <button class="btn btn-full" id="cm-generate-btn" onclick="startCommentary()" style="font-size:0.95rem;padding:14px 0;border-radius:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);border:1px solid rgba(129,140,248,0.15);color:#fff;font-weight:600">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
                     Generate Commentary
                 </button>
@@ -2167,25 +2350,26 @@
 
             <!-- Schedule toggle -->
             <div id="yts-schedule-section" style="margin-bottom:24px">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-                    <input type="checkbox" id="yts-schedule-toggle" style="width:auto" onchange="onScheduleToggle()">
-                    <label for="yts-schedule-toggle" style="font-size:0.84rem;color:var(--text-primary);cursor:pointer;margin:0;display:flex;align-items:center;gap:7px">
-                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        Schedule for later
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:14px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px;cursor:pointer" onclick="document.getElementById('yts-schedule-toggle').click()">
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="yts-schedule-toggle" onchange="onScheduleToggle()">
+                        <span class="toggle-slider"></span>
                     </label>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--lime-dim)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span style="font-size:0.86rem;color:var(--text);font-weight:500">Schedule for later</span>
                 </div>
-                <div id="yts-schedule-picker" style="display:none;padding:16px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
-                    <div style="display:flex;gap:14px;align-items:end">
+                <div id="yts-schedule-picker" style="display:none;padding:18px 20px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px;margin-top:-4px">
+                    <div style="display:flex;gap:16px;align-items:end">
                         <div class="form-group" style="flex:1;margin:0">
-                            <label style="font-size:0.72rem;color:var(--text-secondary)">DATE</label>
-                            <input type="date" id="yts-schedule-date" style="font-size:0.84rem;padding:10px 14px">
+                            <label style="font-size:0.72rem;color:var(--text-secondary);letter-spacing:0.05em">DATE</label>
+                            <input type="date" id="yts-schedule-date" style="font-size:0.84rem;padding:11px 14px;width:100%">
                         </div>
                         <div class="form-group" style="flex:1;margin:0">
-                            <label style="font-size:0.72rem;color:var(--text-secondary)">TIME</label>
-                            <input type="time" id="yts-schedule-time" value="12:00" style="font-size:0.84rem;padding:10px 14px">
+                            <label style="font-size:0.72rem;color:var(--text-secondary);letter-spacing:0.05em">TIME</label>
+                            <input type="time" id="yts-schedule-time" value="12:00" style="font-size:0.84rem;padding:11px 14px;width:100%">
                         </div>
                     </div>
-                    <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:12px">
+                    <div style="font-size:0.73rem;color:var(--text-dim);margin-top:14px;line-height:1.5;padding-left:2px">
                         Video uploads as private and auto-publishes at the scheduled time (your local timezone)
                     </div>
                 </div>
@@ -2193,7 +2377,7 @@
 
             <!-- Upload / Schedule button -->
             <div style="padding:20px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px">
-                <button class="btn btn-yt btn-full" id="yts-upload-btn" onclick="confirmSingleUpload()" style="font-size:0.92rem;padding:14px 0;border-radius:10px">
+                <button class="btn btn-yt btn-full" id="yts-upload-btn" onclick="confirmSingleUpload()">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
                     <span id="yts-upload-btn-text">Upload to YouTube</span>
                 </button>

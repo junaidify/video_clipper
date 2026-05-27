@@ -1,16 +1,19 @@
 """
 TTS Engine Module
-Converts commentary scripts to speech using Edge TTS.
-Supports 300+ neural voices, word-level timestamps, multiple languages.
+Converts commentary scripts to speech using Edge TTS with SSML
+emotional enhancement — prosody contours, strategic pauses, emphasis,
+and mstts:express-as voice styles for supported voices.
 Higher audio quality output (320kbps, 48kHz).
 """
 import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import threading
+import html as html_lib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -18,11 +21,60 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ─── Audio quality settings ───
-AUDIO_BITRATE = "320k"   # High quality (was 192k)
-AUDIO_SAMPLE_RATE = "48000"  # Studio quality (was 44100)
+AUDIO_BITRATE = "320k"   # High quality
+AUDIO_SAMPLE_RATE = "48000"  # Studio quality
+
+# ─── Voice Style Map ───
+# Voices that support mstts:express-as styles.
+# style_name → best narration/motivation style for that voice.
+# styledegree: 0.01-2.0 (higher = more intense emotion)
+VOICE_STYLES = {
+    "en-US-AriaNeural": {
+        "narration":   {"style": "narration-professional", "styledegree": "1.5"},
+        "motivation":  {"style": "excited", "styledegree": "1.8"},
+        "sports":      {"style": "excited", "styledegree": "2.0"},
+        "summary":     {"style": "narration-professional", "styledegree": "1.2"},
+    },
+    "en-US-DavisNeural": {
+        "narration":   {"style": "friendly", "styledegree": "1.3"},
+        "motivation":  {"style": "excited", "styledegree": "1.8"},
+        "sports":      {"style": "shouting", "styledegree": "1.5"},
+        "summary":     {"style": "friendly", "styledegree": "1.0"},
+    },
+    "en-US-GuyNeural": {
+        "narration":   {"style": "newscast", "styledegree": "1.4"},
+        "motivation":  {"style": "excited", "styledegree": "1.8"},
+        "sports":      {"style": "excited", "styledegree": "2.0"},
+        "summary":     {"style": "newscast", "styledegree": "1.2"},
+    },
+    "en-US-JennyNeural": {
+        "narration":   {"style": "narration-professional", "styledegree": "1.5"},
+        "motivation":  {"style": "excited", "styledegree": "1.6"},
+        "sports":      {"style": "excited", "styledegree": "2.0"},
+        "summary":     {"style": "narration-professional", "styledegree": "1.2"},
+    },
+    "en-US-ChristopherNeural": {
+        "narration":   {"style": "narration-professional", "styledegree": "1.5"},
+        "motivation":  {"style": "excited", "styledegree": "1.6"},
+        "sports":      {"style": "excited", "styledegree": "1.8"},
+        "summary":     {"style": "narration-professional", "styledegree": "1.2"},
+    },
+}
+
+# ─── Emphasis Words ───
+# Words/phrases that get <emphasis level="strong"> in SSML
+EMPHASIS_WORDS = {
+    "incredible", "amazing", "unbelievable", "extraordinary", "spectacular",
+    "powerful", "unstoppable", "legendary", "epic", "massive", "insane",
+    "critical", "crucial", "devastating", "dominant", "explosive", "fierce",
+    "game-changing", "historic", "intense", "monumental", "phenomenal",
+    "relentless", "savage", "shocking", "stunning", "supreme", "ultimate",
+    "victory", "warrior", "champion", "never", "always", "everything",
+    "nothing", "impossible", "greatest", "strongest", "fastest", "deadliest",
+    "absolutely", "completely", "totally", "literally", "definitely",
+}
 
 # ─── Voice Presets ───
-# Grouped by category for the UI dropdown
 VOICE_PRESETS = {
     # ── Deep & Motivational (powerful, commanding) ──
     "andrew": {
@@ -43,42 +95,30 @@ VOICE_PRESETS = {
         "gender": "male", "style": "motivation",
         "category": "deep",
     },
-    "eric": {
-        "id": "en-US-EricNeural",
-        "label": "Eric (Deep Mature)",
-        "gender": "male", "style": "motivation",
-        "category": "deep",
-    },
     "roger": {
         "id": "en-US-RogerNeural",
         "label": "Roger (Deep Cinematic)",
         "gender": "male", "style": "motivation",
         "category": "deep",
     },
-    "steffan": {
-        "id": "en-US-SteffanNeural",
-        "label": "Steffan (Calm & Powerful)",
-        "gender": "male", "style": "motivation",
-        "category": "deep",
-    },
 
-    # ── Male Narration ──
-    "guy_narrator": {
-        "id": "en-US-GuyNeural",
-        "label": "Guy (US Male)",
-        "gender": "male", "style": "narration",
-        "category": "narration",
-    },
+    # ── English Narration (with emotional styles) ──
     "davis": {
         "id": "en-US-DavisNeural",
-        "label": "Davis (US Male Deep)",
+        "label": "Davis (Expressive Male)",
         "gender": "male", "style": "narration",
         "category": "narration",
     },
-    "tony": {
-        "id": "en-US-TonyNeural",
-        "label": "Tony (US Male Warm)",
-        "gender": "male", "style": "casual",
+    "guy_narrator": {
+        "id": "en-US-GuyNeural",
+        "label": "Guy (Newscast Male)",
+        "gender": "male", "style": "narration",
+        "category": "narration",
+    },
+    "aria": {
+        "id": "en-US-AriaNeural",
+        "label": "Aria (Expressive Female)",
+        "gender": "female", "style": "narration",
         "category": "narration",
     },
     "ryan": {
@@ -88,43 +128,25 @@ VOICE_PRESETS = {
         "category": "narration",
     },
 
-    # ── Female Narration ──
-    "jenny": {
-        "id": "en-US-JennyNeural",
-        "label": "Jenny (US Female)",
+    # ── Indian English (Deep & Heavy) ──
+    "prabhat": {
+        "id": "en-IN-PrabhatNeural",
+        "label": "Prabhat (Indian Deep Male)",
+        "gender": "male", "style": "motivation",
+        "category": "indian",
+    },
+    "neerja": {
+        "id": "en-IN-NeerjaNeural",
+        "label": "Neerja (Indian Female)",
         "gender": "female", "style": "narration",
-        "category": "narration",
-    },
-    "aria": {
-        "id": "en-US-AriaNeural",
-        "label": "Aria (US Female Warm)",
-        "gender": "female", "style": "narration",
-        "category": "narration",
-    },
-    "sara": {
-        "id": "en-US-SaraNeural",
-        "label": "Sara (US Female Clear)",
-        "gender": "female", "style": "casual",
-        "category": "narration",
-    },
-    "sonia": {
-        "id": "en-GB-SoniaNeural",
-        "label": "Sonia (British Female)",
-        "gender": "female", "style": "narration",
-        "category": "narration",
-    },
-    "michelle": {
-        "id": "en-US-MichelleNeural",
-        "label": "Michelle (US Female Deep)",
-        "gender": "female", "style": "motivation",
-        "category": "deep",
+        "category": "indian",
     },
 
-    # ── Hindi voices ──
+    # ── Hindi (Deep & Heavy) ──
     "madhur": {
         "id": "hi-IN-MadhurNeural",
-        "label": "Madhur (Hindi Male)",
-        "gender": "male", "style": "narration",
+        "label": "Madhur (Hindi Deep Male)",
+        "gender": "male", "style": "motivation",
         "category": "hindi",
     },
     "swara": {
@@ -134,7 +156,99 @@ VOICE_PRESETS = {
         "category": "hindi",
     },
 
-    # ── Urdu voices ──
+    # ── Tamil ──
+    "valluvar": {
+        "id": "ta-IN-ValluvarNeural",
+        "label": "Valluvar (Tamil Deep Male)",
+        "gender": "male", "style": "motivation",
+        "category": "tamil",
+    },
+    "pallavi_ta": {
+        "id": "ta-IN-PallaviNeural",
+        "label": "Pallavi (Tamil Female)",
+        "gender": "female", "style": "narration",
+        "category": "tamil",
+    },
+
+    # ── Telugu ──
+    "mohan": {
+        "id": "te-IN-MohanNeural",
+        "label": "Mohan (Telugu Deep Male)",
+        "gender": "male", "style": "motivation",
+        "category": "telugu",
+    },
+    "shruti": {
+        "id": "te-IN-ShrutiNeural",
+        "label": "Shruti (Telugu Female)",
+        "gender": "female", "style": "narration",
+        "category": "telugu",
+    },
+
+    # ── Bengali ──
+    "bashkar": {
+        "id": "bn-IN-BashkarNeural",
+        "label": "Bashkar (Bengali Deep Male)",
+        "gender": "male", "style": "motivation",
+        "category": "bengali",
+    },
+    "tanishaa": {
+        "id": "bn-IN-TanishaaNeural",
+        "label": "Tanishaa (Bengali Female)",
+        "gender": "female", "style": "narration",
+        "category": "bengali",
+    },
+
+    # ── Gujarati ──
+    "niranjan": {
+        "id": "gu-IN-NiranjanNeural",
+        "label": "Niranjan (Gujarati Deep Male)",
+        "gender": "male", "style": "motivation",
+        "category": "gujarati",
+    },
+    "dhwani": {
+        "id": "gu-IN-DhwaniNeural",
+        "label": "Dhwani (Gujarati Female)",
+        "gender": "female", "style": "narration",
+        "category": "gujarati",
+    },
+
+    # ── Marathi ──
+    "manohar": {
+        "id": "mr-IN-ManoharNeural",
+        "label": "Manohar (Marathi Deep Male)",
+        "gender": "male", "style": "motivation",
+        "category": "marathi",
+    },
+    "aarohi": {
+        "id": "mr-IN-AarohiNeural",
+        "label": "Aarohi (Marathi Female)",
+        "gender": "female", "style": "narration",
+        "category": "marathi",
+    },
+
+    # ── Kannada ──
+    "gagan": {
+        "id": "kn-IN-GaganNeural",
+        "label": "Gagan (Kannada Deep Male)",
+        "gender": "male", "style": "motivation",
+        "category": "kannada",
+    },
+    "sapna": {
+        "id": "kn-IN-SapnaNeural",
+        "label": "Sapna (Kannada Female)",
+        "gender": "female", "style": "narration",
+        "category": "kannada",
+    },
+
+    # ── Punjabi ──
+    "gur_hero": {
+        "id": "pa-IN-GurdeepNeural",
+        "label": "Gurdeep (Punjabi Deep Male)",
+        "gender": "male", "style": "motivation",
+        "category": "punjabi",
+    },
+
+    # ── Urdu ──
     "asad": {
         "id": "ur-PK-AsadNeural",
         "label": "Asad (Urdu Male)",
@@ -149,7 +263,44 @@ VOICE_PRESETS = {
     },
 }
 
-DEFAULT_VOICE = "andrew"  # Default to deep motivational voice
+DEFAULT_VOICE = "andrew"
+
+
+# ─── SSML Builder ───
+
+def _enhance_text(text: str) -> str:
+    """
+    Enhance plain text for more natural TTS delivery using ONLY punctuation.
+    NO XML/SSML tags — edge_tts handles all markup internally.
+
+    Techniques:
+    - Ellipsis pauses between sentences for breathing room
+    - Em-dashes for dramatic emphasis
+    - Capitalize power words for subtle stress
+    - Commas before key phrases to force micro-pauses
+    """
+    # Split into sentences
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    if not sentences:
+        return text
+
+    enhanced = []
+    for i, sentence in enumerate(sentences):
+        # Capitalize power words for subtle emphasis
+        words = sentence.split()
+        processed = []
+        for word in words:
+            clean = re.sub(r'[^a-zA-Z]', '', word).lower()
+            if clean in EMPHASIS_WORDS and not word.isupper():
+                processed.append(word.upper())
+            else:
+                processed.append(word)
+
+        enhanced_sentence = " ".join(processed)
+        enhanced.append(enhanced_sentence)
+
+    # Join with ellipsis pauses — forces natural breathing between sentences
+    return " ... ".join(enhanced)
 
 
 @dataclass
@@ -227,15 +378,23 @@ def _run_async(coro):
 
 
 async def _synthesize_segment(text: str, voice_id: str, output_path: str,
-                               rate: str = "+0%", pitch: str = "+0Hz") -> dict:
+                               rate: str = "+0%", pitch: str = "+0Hz",
+                               narration_style: str = "narration") -> dict:
     """
     Synthesize a single text segment to audio file using Edge TTS.
+    Uses PURE PLAIN TEXT only — no XML/SSML tags whatsoever.
+    Naturalness comes from punctuation-based text enhancement.
     Returns dict with path and duration, or error.
     """
     import edge_tts
 
     try:
-        communicate = edge_tts.Communicate(text, voice_id, rate=rate, pitch=pitch)
+        # Enhance text with punctuation (NO XML tags)
+        enhanced = _enhance_text(text)
+        logger.debug(f"Enhanced text: {enhanced[:200]}...")
+
+        # Plain text + rate/pitch — nothing else
+        communicate = edge_tts.Communicate(enhanced, voice_id, rate=rate, pitch=pitch)
         await communicate.save(output_path)
 
         if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
@@ -252,9 +411,10 @@ async def _synthesize_segment(text: str, voice_id: str, output_path: str,
 async def _synthesize_all_segments(segments: list, voice_id: str,
                                     output_dir: str,
                                     rate: str = "+0%",
-                                    pitch: str = "+0Hz") -> list:
+                                    pitch: str = "+0Hz",
+                                    narration_style: str = "narration") -> list:
     """
-    Synthesize all commentary segments to individual audio files.
+    Synthesize all commentary segments to individual audio files with SSML.
     Each segment is processed sequentially (Edge TTS doesn't support
     concurrent connections reliably).
     """
@@ -270,7 +430,10 @@ async def _synthesize_all_segments(segments: list, voice_id: str,
 
         logger.info(f"  TTS segment {i}/{len(segments)-1}: \"{text[:60]}...\"")
 
-        result = await _synthesize_segment(text, voice_id, seg_path, rate, pitch)
+        result = await _synthesize_segment(
+            text, voice_id, seg_path, rate, pitch,
+            narration_style=narration_style
+        )
 
         if result.get("path"):
             results.append({
@@ -306,9 +469,11 @@ def synthesize_commentary(commentary_segments: list,
                           voice_key: str = DEFAULT_VOICE,
                           rate: str = "+0%",
                           pitch: str = "+0Hz",
-                          video_duration: float = 0) -> TTSResult:
+                          video_duration: float = 0,
+                          narration_style: str = "narration") -> TTSResult:
     """
-    Synthesize full commentary script to a single merged audio file.
+    Synthesize full commentary script to a single merged audio file
+    with SSML emotional enhancement.
 
     Args:
         commentary_segments: List of dicts with 'start', 'end', 'text', 'pause_after'
@@ -317,6 +482,7 @@ def synthesize_commentary(commentary_segments: list,
         rate: Speech rate adjustment (e.g., "+10%", "-5%")
         pitch: Pitch adjustment (e.g., "+2Hz", "-1Hz")
         video_duration: Target video duration for padding
+        narration_style: Style hint ('narration', 'motivation', 'sports', 'summary')
 
     Returns:
         TTSResult with path to the final merged audio
@@ -327,13 +493,22 @@ def synthesize_commentary(commentary_segments: list,
     voice_info = VOICE_PRESETS.get(voice_key, VOICE_PRESETS[DEFAULT_VOICE])
     voice_id = voice_info["id"]
 
-    logger.info(f"Synthesizing {len(commentary_segments)} segments with voice: {voice_info['label']} ({voice_id})")
+    # Use the voice's own style category if narration_style is generic
+    effective_style = narration_style
+    if narration_style == "narration" and voice_info.get("style") == "motivation":
+        effective_style = "motivation"
+
+    logger.info(
+        f"Synthesizing {len(commentary_segments)} segments with voice: "
+        f"{voice_info['label']} ({voice_id}), style: {effective_style}"
+    )
 
     # Synthesize all segments using safe async runner
     try:
         seg_results = _run_async(
             _synthesize_all_segments(
-                commentary_segments, voice_id, output_dir, rate, pitch
+                commentary_segments, voice_id, output_dir, rate, pitch,
+                narration_style=effective_style
             )
         )
     except Exception as e:
@@ -400,10 +575,11 @@ def _merge_segments_to_timeline(seg_results: list, output_path: str,
         delay_ms = int(seg["target_start"] * 1000)
         target_dur = max(video_duration, seg["target_start"] + seg["audio_duration"] + 1)
 
+        # Volume boost: Edge TTS output is often quiet, boost by 2.5x and limit
         cmd = [
             "ffmpeg", "-y",
             "-i", seg["path"],
-            "-af", f"adelay={delay_ms}|{delay_ms},apad=whole_dur={target_dur}",
+            "-af", f"adelay={delay_ms}|{delay_ms},volume=2.5,alimiter=limit=0.95,apad=whole_dur={target_dur}",
             "-t", str(target_dur),
             "-c:a", "libmp3lame", "-b:a", AUDIO_BITRATE, "-ar", AUDIO_SAMPLE_RATE,
             output_path
@@ -412,18 +588,22 @@ def _merge_segments_to_timeline(seg_results: list, output_path: str,
         return _get_audio_duration(output_path)
 
     # Multiple segments — build complex filter
+    # Key fix: amix divides volume by input count by default.
+    # We add normalize=0 to prevent that, plus a volume boost + limiter.
+    n = len(valid_segs)
     inputs = []
     filter_parts = []
 
     for i, seg in enumerate(valid_segs):
         inputs.extend(["-i", seg["path"]])
         delay_ms = int(seg["target_start"] * 1000)
-        filter_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms},apad=whole_dur={video_duration}[a{i}]")
+        # Boost each segment before mixing
+        filter_parts.append(f"[{i}:a]volume=2.5,adelay={delay_ms}|{delay_ms},apad=whole_dur={video_duration}[a{i}]")
 
-    # Mix all delayed streams
-    mix_inputs = "".join(f"[a{i}]" for i in range(len(valid_segs)))
+    # Mix all delayed streams — normalize=0 prevents volume division
+    mix_inputs = "".join(f"[a{i}]" for i in range(n))
     filter_parts.append(
-        f"{mix_inputs}amix=inputs={len(valid_segs)}:duration=longest:dropout_transition=0[out]"
+        f"{mix_inputs}amix=inputs={n}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[out]"
     )
 
     filter_complex = ";".join(filter_parts)

@@ -5,6 +5,7 @@ with word/segment-level timestamps.
 """
 import json
 import logging
+import os
 import subprocess
 import tempfile
 import threading
@@ -121,11 +122,64 @@ def extract_audio(video_path: str, audio_path: str) -> str:
     return audio_path
 
 
+def _get_cache_path(video_path: str, model_size: str) -> str:
+    """Build the cache file path for a video's transcript."""
+    video = Path(video_path)
+    return str(video.parent / f"{video.stem}_transcript_{model_size}.json")
+
+
+def _load_cached_transcript(cache_path: str) -> Optional[Transcript]:
+    """Load a cached transcript from disk if it exists and is valid."""
+    if not os.path.isfile(cache_path):
+        return None
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Validate required fields
+        if not data.get("segments"):
+            return None
+
+        segments = []
+        for s in data["segments"]:
+            segments.append(TranscriptSegment(
+                id=s["id"],
+                start=s["start"],
+                end=s["end"],
+                text=s["text"],
+                words=s.get("words", []),
+            ))
+
+        transcript = Transcript(
+            segments=segments,
+            full_text=data.get("full_text", ""),
+            language=data.get("language", "unknown"),
+            duration=data.get("duration", 0),
+        )
+        logger.info(f"Loaded cached transcript: {cache_path} ({len(segments)} segments)")
+        return transcript
+
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        logger.warning(f"Invalid transcript cache, will re-transcribe: {e}")
+        return None
+
+
+def _save_transcript_cache(transcript: Transcript, cache_path: str):
+    """Save transcript to disk for future reuse."""
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(transcript.to_dict(), f, indent=2, ensure_ascii=False)
+        logger.info(f"Transcript cached: {cache_path}")
+    except Exception as e:
+        logger.warning(f"Failed to cache transcript: {e}")
+
+
 def transcribe(video_path: str, model_size: str = "base",
                language: Optional[str] = None,
                device: str = "auto") -> Transcript:
     """
     Transcribe video using OpenAI Whisper.
+    Caches results alongside the video file for instant reuse.
 
     Args:
         video_path: Path to the input video file
@@ -137,6 +191,15 @@ def transcribe(video_path: str, model_size: str = "base",
         Transcript object with segments and timestamps
     """
     device = resolve_device(device)
+
+    video_path = str(Path(video_path).resolve())
+
+    # ── Check cache first ──
+    cache_path = _get_cache_path(video_path, model_size)
+    cached = _load_cached_transcript(cache_path)
+    if cached:
+        return cached
+
     try:
         import whisper
     except ImportError:
@@ -146,7 +209,6 @@ def transcribe(video_path: str, model_size: str = "base",
             "Also requires ffmpeg installed on your system."
         )
 
-    video_path = str(Path(video_path).resolve())
     duration = get_video_duration(video_path)
 
     # Extract audio to temp file
@@ -204,12 +266,17 @@ def transcribe(video_path: str, model_size: str = "base",
             f"language={detected_lang}, duration={duration:.1f}s"
         )
 
-        return Transcript(
+        transcript = Transcript(
             segments=segments,
             full_text=full_text,
             language=detected_lang,
             duration=duration or (segments[-1].end if segments else 0),
         )
+
+        # ── Save to cache for future reuse ──
+        _save_transcript_cache(transcript, cache_path)
+
+        return transcript
 
     finally:
         # Cleanup temp audio

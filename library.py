@@ -32,6 +32,8 @@ class VideoEntry:
     duration: Optional[float] = None
     added_at: str = ""      # ISO timestamp
     file_size_mb: float = 0.0
+    uploader: Optional[str] = None          # channel/uploader name
+    channel_url: Optional[str] = None       # channel URL for credit
     clips_directories: list = field(default_factory=list)  # list of output dirs
 
     def to_dict(self) -> dict:
@@ -85,7 +87,9 @@ class VideoLibrary:
     def add_video(self, source_path: str, title: str,
                   source: str = "upload",
                   source_url: Optional[str] = None,
-                  duration: Optional[float] = None) -> VideoEntry:
+                  duration: Optional[float] = None,
+                  uploader: Optional[str] = None,
+                  channel_url: Optional[str] = None) -> VideoEntry:
         """
         Add a video to the library.
         Copies/moves the file into its own named directory.
@@ -122,6 +126,8 @@ class VideoLibrary:
             duration=duration,
             added_at=datetime.now().isoformat(),
             file_size_mb=round(file_size_mb, 2),
+            uploader=uploader or None,
+            channel_url=channel_url or None,
             clips_directories=[],
         )
 

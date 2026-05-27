@@ -262,6 +262,8 @@ def _library_download_job(job_id: str, url: str):
             source='url',
             source_url=url,
             duration=duration,
+            uploader=dl_result.uploader,
+            channel_url=dl_result.channel_url,
         )
 
         jobs[job_id]['video'] = entry.to_dict()
@@ -829,6 +831,33 @@ def _find_job_dir(job_id: str) -> str:
     return direct  # fallback
 
 
+def _get_credit_line(job_id: str = '', video_id: str = '') -> str:
+    """
+    Look up the source video's uploader info and return a credit line.
+    Searches by job_id (for clips) or video_id (for library videos).
+    Returns empty string if no uploader info found.
+    """
+    # Try by video_id first (library video direct upload)
+    if video_id:
+        entry = video_library.get_video(video_id)
+        if entry and entry.uploader:
+            if entry.channel_url:
+                return f"\n\nOriginal by: {entry.uploader}\n{entry.channel_url}"
+            return f"\n\nOriginal by: {entry.uploader}"
+
+    # Try by job_id — match clip directory against library entries' clips_directories
+    if job_id:
+        clip_dir = _find_job_dir(job_id)
+        for v in video_library.list_videos():
+            if v.uploader and any(clip_dir.startswith(cd) or cd.startswith(os.path.dirname(clip_dir))
+                                  for cd in v.clips_directories):
+                if v.channel_url:
+                    return f"\n\nOriginal by: {v.uploader}\n{v.channel_url}"
+                return f"\n\nOriginal by: {v.uploader}"
+
+    return ''
+
+
 @app.route('/clips/<job_id>/<filename>')
 def serve_clip(job_id, filename):
     """Serve a generated clip file."""
@@ -1379,6 +1408,7 @@ def _commentary_job(cjob_id, video_path, voice, style, mode,
             rate=rate,
             pitch=pitch,
             video_duration=transcript.duration,
+            narration_style=style,
         )
 
         if not tts_result.success:
@@ -1767,6 +1797,11 @@ def youtube_upload_single():
     description = custom_description or ''
     tags = custom_tags if isinstance(custom_tags, list) else []
 
+    # Auto-append credit line if source video has uploader info
+    credit = _get_credit_line(job_id=job_id)
+    if credit and credit.strip() not in description:
+        description += credit
+
     # Validate schedule_at if provided
     publish_at = None
     if schedule_at:
@@ -1906,6 +1941,11 @@ def _youtube_upload_job(upload_job_id, clip_dir, clip_files, privacy, category,
         # Merge in extra tags from the form
         if custom_tags:
             clip_tags = list(set(clip_tags + custom_tags))[:15]
+
+        # Auto-append credit line from source video
+        credit = _get_credit_line(job_id=job_id)
+        if credit and credit.strip() not in description:
+            description += credit
 
         def _progress(sent, total_bytes):
             if total_bytes > 0:

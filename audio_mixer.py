@@ -89,39 +89,87 @@ def mix_commentary(video_path: str,
 def _replace_audio(video_path: str, audio_path: str, output_path: str,
                     commentary_volume: float) -> bool:
     """
-    Replace video's original audio entirely with commentary.
-    Mutes original, overlays commentary track.
+    Nuclear audio replacement — ZERO original audio bleed guaranteed.
+
+    Two-step process:
+      1. Extract video-only to a temp file (no audio track at all)
+      2. Mux the silent video with commentary audio
+
+    This makes bleed-through physically impossible because the
+    intermediate file has NO audio stream to leak.
     """
-    vol_filter = f"volume={commentary_volume}" if commentary_volume != 1.0 else ""
+    import tempfile
 
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", video_path,
-        "-i", audio_path,
-        "-map", "0:v",         # keep original video
-        "-map", "1:a",         # use commentary audio
-        "-c:v", "copy",        # don't re-encode video
-    ]
+    tmp_dir = tempfile.mkdtemp()
+    silent_video = os.path.join(tmp_dir, "video_only.mp4")
 
-    if vol_filter:
-        cmd.extend(["-af", vol_filter])
+    try:
+        # ── Step 1: Strip ALL audio from the video ──
+        strip_cmd = [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-an",              # absolutely no audio
+            "-c:v", "copy",     # don't re-encode video
+            silent_video
+        ]
+        strip_result = subprocess.run(
+            strip_cmd, capture_output=True, encoding='utf-8',
+            errors='replace', timeout=120
+        )
+        if strip_result.returncode != 0:
+            logger.error(f"Audio strip failed: {strip_result.stderr[-300:]}")
+            return False
 
-    cmd.extend([
-        "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
-        "-shortest",           # stop at shortest stream
-        "-movflags", "+faststart",
-        output_path
-    ])
+        # Verify: the temp file must have ZERO audio streams
+        probe_cmd = [
+            "ffprobe", "-v", "quiet", "-print_format", "json",
+            "-show_streams", "-select_streams", "a", silent_video
+        ]
+        probe_result = subprocess.run(
+            probe_cmd, capture_output=True, encoding='utf-8', errors='replace'
+        )
+        try:
+            probe_data = json.loads(probe_result.stdout)
+            if probe_data.get("streams"):
+                logger.error("Audio strip failed: temp file still has audio streams!")
+                return False
+        except (json.JSONDecodeError, TypeError):
+            pass  # probe failed, proceed anyway — the -an flag is reliable
 
-    result = subprocess.run(
-        cmd, capture_output=True, encoding='utf-8',
-        errors='replace', timeout=180
-    )
+        # ── Step 2: Mux silent video + commentary ──
+        vol_val = max(commentary_volume, 1.0) * 1.5
+        vol_filter = f"volume={vol_val},alimiter=limit=0.95"
 
-    if result.returncode != 0:
-        logger.error(f"Replace audio failed: {result.stderr[-300:]}")
+        mux_cmd = [
+            "ffmpeg", "-y",
+            "-i", silent_video,     # video with NO audio
+            "-i", audio_path,       # commentary only
+            "-map", "0:v",
+            "-map", "1:a",
+            "-c:v", "copy",
+            "-af", vol_filter,
+            "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
+            "-shortest",
+            "-movflags", "+faststart",
+            output_path
+        ]
+        mux_result = subprocess.run(
+            mux_cmd, capture_output=True, encoding='utf-8',
+            errors='replace', timeout=180
+        )
+        if mux_result.returncode != 0:
+            logger.error(f"Mux failed: {mux_result.stderr[-300:]}")
+            return False
+
+        logger.info("Nuclear replace complete — zero original audio in output")
+        return True
+
+    except Exception as e:
+        logger.error(f"Nuclear replace error: {e}")
         return False
-    return True
+    finally:
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _mix_audio(video_path: str, audio_path: str, output_path: str,
@@ -131,10 +179,12 @@ def _mix_audio(video_path: str, audio_path: str, output_path: str,
     Original audio is reduced to `original_volume`, commentary at `commentary_volume`.
     """
     # Build amix filter with volume adjustments
+    # Boost commentary by 1.5x, add limiter, normalize=0 prevents amix halving
+    comm_vol = max(commentary_volume, 1.0) * 1.5
     filter_complex = (
         f"[0:a]volume={original_volume}[orig];"
-        f"[1:a]volume={commentary_volume}[comm];"
-        f"[orig][comm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+        f"[1:a]volume={comm_vol},alimiter=limit=0.95[comm];"
+        f"[orig][comm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0,alimiter=limit=0.95[aout]"
     )
 
     cmd = [
