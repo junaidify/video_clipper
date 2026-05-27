@@ -13,6 +13,9 @@ google-auth>=2.20
 google-auth-oauthlib>=1.0
 google-api-python-client>=2.90
 
+# AI Commentary / TTS
+edge-tts>=6.1          # Microsoft Edge neural TTS (free, no API key)
+
 # LLM Fallback (optional — install only what you need)
 groq>=0.9
 google-generativeai>=0.7

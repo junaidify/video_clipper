@@ -102,6 +102,8 @@ class DownloadResult:
     error: Optional[str] = None
     platform: Optional[str] = None
     warning: Optional[str] = None
+    uploader: Optional[str] = None       # channel/uploader name
+    channel_url: Optional[str] = None    # channel URL for credit links
 
 
 def _extract_domain(url: str) -> str:
@@ -641,9 +643,11 @@ def download_video(url: str, output_dir: str,
 
                     title = info.get('title', 'Unknown')
                     duration = info.get('duration', 0)
+                    uploader = info.get('uploader') or info.get('channel') or ''
+                    channel_url = info.get('channel_url') or info.get('uploader_url') or ''
 
                     logger.info(f"Download complete: {file_path}")
-                    logger.info(f"Platform: {platform} | Title: {title} | Duration: {duration}s")
+                    logger.info(f"Platform: {platform} | Title: {title} | Duration: {duration}s | Uploader: {uploader}")
 
                     warning = None
                     if not cookies_config:
@@ -659,6 +663,8 @@ def download_video(url: str, output_dir: str,
                         duration=duration,
                         platform=platform,
                         warning=warning,
+                        uploader=uploader,
+                        channel_url=channel_url,
                     )
 
             except Exception as e:

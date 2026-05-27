@@ -11,7 +11,7 @@ class TranscriberConfig:
     """Whisper transcription settings."""
     model_size: str = "base"  # tiny, base, small, medium, large
     language: Optional[str] = None  # None = auto-detect
-    device: str = "cpu"  # cpu or cuda
+    device: str = "auto"  # auto (GPU if available), cpu, or cuda
 
 
 @dataclass
