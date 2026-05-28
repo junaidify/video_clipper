@@ -1569,6 +1569,7 @@
         <a href="/" class="nav-brand" style="text-decoration:none;color:var(--white)">CLIPPER</a>
         <span class="nav-tag">v2.0</span>
         <div class="nav-spacer"></div>
+        <a href="/factory" class="nav-home" style="margin-right:8px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:#fff;padding:6px 14px;border-radius:6px;font-size:.78rem;font-weight:600;text-decoration:none">⚡ Content Factory</a>
         <a href="/" class="nav-home">Back to Home</a>
     </div>
 </nav>
@@ -2038,6 +2039,89 @@
                 <div id="yt-batch-clips-preview" style="display:none;margin-bottom:22px;max-height:280px;overflow-y:auto;border:1px solid var(--border-hover);border-radius:10px;background:var(--bg-elevated)">
                 </div>
 
+                <!-- ── Video Modulation Section ── -->
+                <div style="margin-bottom:22px;padding:16px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                            <span style="font-size:0.84rem;font-weight:600;color:var(--text-primary)">PIXEL MODULATION</span>
+                        </div>
+                        <label class="custom-check" style="margin:0">
+                            <input type="checkbox" id="yt-modulate-enabled" checked>
+                            <span class="checkmark"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                            <span style="font-size:0.78rem;color:var(--text-secondary)">Enable</span>
+                        </label>
+                    </div>
+                    <div id="yt-modulate-options">
+                        <div style="font-size:0.74rem;color:var(--text-dim);margin-bottom:12px">Transforms pixel data to make each clip mathematically unique — invisible to humans, breaks content hash matching.</div>
+                        <div class="form-group" style="margin-bottom:12px">
+                            <label style="font-size:0.74rem">PRESET</label>
+                            <select id="yt-mod-preset" class="select-input" style="padding:8px 12px;font-size:0.82rem" onchange="onModPresetChange()">
+                                <option value="stealth">Stealth Mode — minimal visible change</option>
+                                <option value="cinematic" selected>Cinematic Grade — film-like look</option>
+                                <option value="vibrant">Vibrant Pop — boosted colors</option>
+                                <option value="warm_flip">Warm + Mirror — use if no text/logos</option>
+                                <option value="maximum">Maximum Disruption — every transform</option>
+                                <option value="custom">Custom Settings</option>
+                            </select>
+                        </div>
+                        <div id="yt-mod-custom" style="display:none">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                                <div class="form-group" style="margin-bottom:0">
+                                    <label style="font-size:0.72rem">ZOOM %</label>
+                                    <input type="number" id="yt-mod-zoom" value="4" min="0" max="10" step="0.5" style="padding:7px 10px;font-size:0.8rem">
+                                </div>
+                                <div class="form-group" style="margin-bottom:0">
+                                    <label style="font-size:0.72rem">COLOR GRADE</label>
+                                    <select id="yt-mod-color" class="select-input" style="padding:7px 10px;font-size:0.8rem">
+                                        <option value="warm">Warm</option>
+                                        <option value="cool">Cool</option>
+                                        <option value="cinematic">Cinematic</option>
+                                        <option value="vibrant">Vibrant</option>
+                                        <option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom:0">
+                                    <label style="font-size:0.72rem">GRAIN INTENSITY</label>
+                                    <input type="number" id="yt-mod-grain" value="0.05" min="0" max="0.15" step="0.01" style="padding:7px 10px;font-size:0.8rem">
+                                </div>
+                                <div class="form-group" style="margin-bottom:0">
+                                    <label style="font-size:0.72rem">SATURATION BOOST</label>
+                                    <input type="number" id="yt-mod-sat" value="1.10" min="0.8" max="1.5" step="0.05" style="padding:7px 10px;font-size:0.8rem">
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:16px;margin-top:10px">
+                                <label class="custom-check" style="margin:0">
+                                    <input type="checkbox" id="yt-mod-flip">
+                                    <span class="checkmark"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                                    <span style="font-size:0.76rem;color:var(--text-secondary)">Mirror Flip</span>
+                                </label>
+                                <label class="custom-check" style="margin:0">
+                                    <input type="checkbox" id="yt-mod-subs">
+                                    <span class="checkmark"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                                    <span style="font-size:0.76rem;color:var(--text-secondary)">Burn Subtitles</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="yt-mod-status" style="font-size:0.74rem;color:var(--text-dim);margin-top:8px"></div>
+                </div>
+
+                <!-- ── Smart Thumbnail Section ── -->
+                <div style="margin-bottom:22px;padding:16px 18px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span style="font-size:0.84rem;font-weight:600;color:var(--text-primary)">SMART THUMBNAIL</span>
+                        <button class="btn btn-sm" id="yt-thumb-scan-btn" onclick="scanTopThumbnails()" style="margin-left:auto;font-size:0.72rem;padding:5px 12px;background:var(--accent-dim);border:none;color:#fff;border-radius:6px">
+                            Scan Best Frames
+                        </button>
+                    </div>
+                    <div id="yt-thumb-candidates" style="display:none">
+                        <div style="display:flex;gap:8px;overflow-x:auto;padding:4px 0" id="yt-thumb-grid"></div>
+                        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:8px" id="yt-thumb-info">Click a frame to select it as thumbnail</div>
+                    </div>
+                </div>
+
                 <div style="display:flex;gap:14px;margin-bottom:20px">
                     <div class="form-group" style="flex:1;margin-bottom:0">
                         <label>PRIVACY</label>
@@ -2099,6 +2183,88 @@
                 <p style="color:var(--text-dim);font-size:0.78rem;margin-top:10px">
                     Get them from Google Cloud Console &rarr; APIs &amp; Services &rarr; Credentials &rarr; OAuth 2.0 Client ID
                 </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Pixel Modulation Modal ── -->
+<div class="modal-overlay" id="modulate-modal">
+    <div class="modal" style="max-width:520px">
+        <div class="modal-header">
+            <h3 style="display:flex;align-items:center;gap:10px">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                PIXEL MODULATION
+            </h3>
+            <button class="modal-close" onclick="closeModulateModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:24px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding:12px 16px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10,8 16,12 10,16" fill="var(--text-secondary)" stroke="none"/></svg>
+                <span id="mod-filename" style="font-family:var(--mono);font-size:0.8rem;color:var(--text-primary);word-break:break-all"></span>
+            </div>
+            <div style="font-size:0.76rem;color:var(--text-dim);margin-bottom:16px">Transforms pixel data to make each clip mathematically unique — invisible to viewers, breaks content fingerprinting.</div>
+            <div class="form-group" style="margin-bottom:16px">
+                <label>PRESET</label>
+                <select id="mod-preset" class="select-input" style="padding:10px 14px" onchange="onStandaloneModPreset()">
+                    <option value="stealth">Stealth Mode — minimal visible change</option>
+                    <option value="cinematic" selected>Cinematic Grade — film-like look</option>
+                    <option value="vibrant">Vibrant Pop — boosted colors</option>
+                    <option value="warm_flip">Warm + Mirror — use if no text/logos</option>
+                    <option value="maximum">Maximum Disruption — every transform</option>
+                    <option value="custom">Custom Settings</option>
+                </select>
+            </div>
+            <div id="mod-custom-panel" style="display:none;margin-bottom:16px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label style="font-size:0.74rem">ZOOM %</label>
+                        <input type="number" id="mod-zoom" value="4" min="0" max="10" step="0.5" style="padding:8px 12px">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label style="font-size:0.74rem">COLOR GRADE</label>
+                        <select id="mod-color" class="select-input" style="padding:8px 12px">
+                            <option value="warm">Warm</option>
+                            <option value="cool">Cool</option>
+                            <option value="cinematic">Cinematic</option>
+                            <option value="vibrant">Vibrant</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label style="font-size:0.74rem">GRAIN INTENSITY</label>
+                        <input type="number" id="mod-grain" value="0.05" min="0" max="0.15" step="0.01" style="padding:8px 12px">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label style="font-size:0.74rem">SATURATION BOOST</label>
+                        <input type="number" id="mod-sat" value="1.10" min="0.8" max="1.5" step="0.05" style="padding:8px 12px">
+                    </div>
+                </div>
+                <div style="display:flex;gap:18px;margin-top:12px">
+                    <label class="custom-check" style="margin:0">
+                        <input type="checkbox" id="mod-flip">
+                        <span class="checkmark"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                        <span style="font-size:0.78rem;color:var(--text-secondary)">Mirror Flip</span>
+                    </label>
+                    <label class="custom-check" style="margin:0">
+                        <input type="checkbox" id="mod-subs">
+                        <span class="checkmark"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                        <span style="font-size:0.78rem;color:var(--text-secondary)">Burn Subtitles</span>
+                    </label>
+                </div>
+            </div>
+            <div id="mod-result" style="display:none;margin-bottom:16px;padding:14px 16px;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:10px">
+                <div id="mod-result-text" style="font-size:0.8rem;color:var(--text-primary)"></div>
+                <div id="mod-result-transforms" style="font-size:0.72rem;color:var(--text-dim);margin-top:6px"></div>
+            </div>
+            <button class="btn btn-full" id="mod-apply-btn" onclick="applyModulation()" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-weight:700;border:none;padding:14px;border-radius:10px;font-size:0.88rem">
+                Apply Modulation
+            </button>
+            <div id="mod-progress" style="display:none;margin-top:12px">
+                <div class="progress-wrap">
+                    <div class="progress-bar"><div class="progress-fill" id="mod-progress-fill" style="width:0%;background:linear-gradient(90deg,#f59e0b,#d97706)"></div></div>
+                    <div class="progress-label" id="mod-progress-label">Processing...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -3036,6 +3202,10 @@ async function openFolder(idx) {
                                 <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
                                 Narrate
                             </button>
+                            <button class="clip-act-btn" onclick="openModulateModal('${jobId}','${f.filename}',this)" style="font-size:0.72rem;padding:6px 12px;color:#f59e0b;border-color:rgba(245,158,11,0.3)" title="Pixel Modulation">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                Modulate
+                            </button>
                         </div>
                     </div>
                 `;
@@ -3088,6 +3258,10 @@ function clipActionsHtml(jobId, filename) {
         <button class="clip-act-btn" onclick="openCommentaryModal('${jobId}','${filename}')" style="color:var(--accent);border-color:rgba(99,102,241,0.3)" title="AI Commentary">
             <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
             Narrate
+        </button>
+        <button class="clip-act-btn" onclick="openModulateModal('${jobId}','${filename}',this)" style="color:#f59e0b;border-color:rgba(245,158,11,0.3)" title="Pixel Modulation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Modulate
         </button>
         <button class="clip-act-btn" onclick="deleteClipFile('${jobId}','${filename}',this)" style="color:#ef4444;border-color:rgba(220,38,38,0.3)" title="Delete clip">
             <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -3562,6 +3736,206 @@ function closeYoutubeUpload() {
     if (ytUploadPoll) { clearInterval(ytUploadPoll); ytUploadPoll = null; }
 }
 
+// ── Standalone Modulation Modal ──
+var _modJobId = '', _modFilename = '', _modBtn = null;
+function openModulateModal(jobId, filename, btn) {
+    _modJobId = jobId; _modFilename = filename; _modBtn = btn;
+    document.getElementById('mod-filename').textContent = filename;
+    document.getElementById('mod-result').style.display = 'none';
+    document.getElementById('mod-progress').style.display = 'none';
+    document.getElementById('mod-apply-btn').disabled = false;
+    document.getElementById('mod-apply-btn').textContent = 'Apply Modulation';
+    document.getElementById('modulate-modal').classList.add('active');
+}
+function closeModulateModal() {
+    document.getElementById('modulate-modal').classList.remove('active');
+}
+function onStandaloneModPreset() {
+    var preset = document.getElementById('mod-preset').value;
+    document.getElementById('mod-custom-panel').style.display = preset === 'custom' ? 'block' : 'none';
+}
+async function applyModulation() {
+    var btn = document.getElementById('mod-apply-btn');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+    document.getElementById('mod-progress').style.display = 'block';
+    document.getElementById('mod-progress-fill').style.width = '30%';
+    document.getElementById('mod-progress-label').textContent = 'Applying transforms...';
+
+    var preset = document.getElementById('mod-preset').value;
+    var body = { job_id: _modJobId, filename: _modFilename };
+
+    if (preset === 'custom') {
+        body.config = {
+            zoom_percent: parseFloat(document.getElementById('mod-zoom').value) || 4,
+            mirror_flip: document.getElementById('mod-flip').checked,
+            color_grade: document.getElementById('mod-color').value,
+            grain_overlay: true,
+            grain_intensity: parseFloat(document.getElementById('mod-grain').value) || 0.05,
+            saturation_boost: parseFloat(document.getElementById('mod-sat').value) || 1.1,
+            burn_subtitles: document.getElementById('mod-subs').checked,
+        };
+    } else {
+        body.preset = preset;
+    }
+
+    try {
+        document.getElementById('mod-progress-fill').style.width = '60%';
+        var resp = await fetch('/api/clips/modulate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        var data = await resp.json();
+        document.getElementById('mod-progress-fill').style.width = '100%';
+
+        if (data.success) {
+            document.getElementById('mod-progress-label').textContent = 'Done!';
+            document.getElementById('mod-result').style.display = 'block';
+            document.getElementById('mod-result-text').innerHTML =
+                '<span style="color:#4caf50;font-weight:600">✓ Modulated:</span> ' +
+                '<a href="' + data.modulated_url + '" target="_blank" style="color:var(--accent)">' + data.modulated_filename + '</a>' +
+                ' <span style="color:var(--text-dim)">(' + data.original_size_mb + 'MB → ' + data.modulated_size_mb + 'MB)</span>';
+            document.getElementById('mod-result-transforms').textContent = 'Transforms: ' + data.transforms.join(' → ');
+            btn.textContent = '✓ Applied';
+
+            // Refresh clip listings
+            if (typeof refreshClipList === 'function') refreshClipList();
+        } else {
+            document.getElementById('mod-progress-label').textContent = 'Failed: ' + (data.error || 'Unknown error');
+            document.getElementById('mod-progress-label').style.color = '#ef4444';
+            btn.textContent = 'Retry';
+            btn.disabled = false;
+        }
+    } catch(e) {
+        document.getElementById('mod-progress-label').textContent = 'Error: ' + e.message;
+        btn.textContent = 'Retry';
+        btn.disabled = false;
+    }
+}
+
+// ── Modulation Preset Toggle (upload modal) ──
+function onModPresetChange() {
+    var preset = document.getElementById('yt-mod-preset').value;
+    document.getElementById('yt-mod-custom').style.display = preset === 'custom' ? 'block' : 'none';
+}
+
+// ── Modulate all clips before upload ──
+async function modulateAllClips(jobId, clipFiles) {
+    var enabled = document.getElementById('yt-modulate-enabled').checked;
+    if (!enabled) return clipFiles; // return originals unchanged
+
+    var statusEl = document.getElementById('yt-mod-status');
+    var preset = document.getElementById('yt-mod-preset').value;
+    var modulatedFiles = [];
+
+    for (var i = 0; i < clipFiles.length; i++) {
+        statusEl.textContent = 'Modulating clip ' + (i+1) + '/' + clipFiles.length + '...';
+        statusEl.style.color = 'var(--accent)';
+
+        var body = { job_id: jobId, filename: clipFiles[i] };
+        if (preset === 'custom') {
+            body.config = {
+                zoom_percent: parseFloat(document.getElementById('yt-mod-zoom').value) || 4,
+                mirror_flip: document.getElementById('yt-mod-flip').checked,
+                color_grade: document.getElementById('yt-mod-color').value,
+                grain_overlay: true,
+                grain_intensity: parseFloat(document.getElementById('yt-mod-grain').value) || 0.05,
+                saturation_boost: parseFloat(document.getElementById('yt-mod-sat').value) || 1.1,
+                burn_subtitles: document.getElementById('yt-mod-subs').checked,
+            };
+        } else {
+            body.preset = preset;
+        }
+
+        try {
+            var resp = await fetch('/api/clips/modulate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            var data = await resp.json();
+            if (data.success) {
+                modulatedFiles.push(data.modulated_filename);
+                statusEl.textContent = 'Clip ' + (i+1) + ': ' + data.transforms.join(', ');
+            } else {
+                modulatedFiles.push(clipFiles[i]); // fallback to original
+                statusEl.textContent = 'Clip ' + (i+1) + ' modulation failed, using original';
+                statusEl.style.color = '#e57373';
+            }
+        } catch(e) {
+            modulatedFiles.push(clipFiles[i]);
+        }
+    }
+
+    statusEl.textContent = '✓ All clips modulated';
+    statusEl.style.color = '#4caf50';
+    return modulatedFiles;
+}
+
+// ── Smart Thumbnail Scanning ──
+var _selectedThumbnail = null;
+async function scanTopThumbnails() {
+    var btn = document.getElementById('yt-thumb-scan-btn');
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+
+    // Get the current job and first clip
+    var jobId = currentJobId || '';
+    var clips = currentClipFiles || [];
+    if (!jobId || clips.length === 0) {
+        btn.textContent = 'No clips';
+        btn.disabled = false;
+        return;
+    }
+
+    try {
+        var resp = await fetch('/api/clips/top-thumbnails', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: jobId, filename: clips[0], top_n: 5 })
+        });
+        var data = await resp.json();
+        if (data.success && data.thumbnails.length > 0) {
+            var grid = document.getElementById('yt-thumb-grid');
+            grid.innerHTML = '';
+            data.thumbnails.forEach(function(t, idx) {
+                var div = document.createElement('div');
+                div.style.cssText = 'flex-shrink:0;cursor:pointer;border:2px solid transparent;border-radius:8px;overflow:hidden;position:relative;transition:border-color 0.2s';
+                div.onclick = function() {
+                    _selectedThumbnail = t;
+                    grid.querySelectorAll('div').forEach(function(d) { d.style.borderColor = 'transparent'; });
+                    div.style.borderColor = 'var(--accent)';
+                    document.getElementById('yt-thumb-info').textContent = 'Selected: Frame at ' + t.timestamp + 's (score: ' + t.score + ')';
+                };
+                var img = document.createElement('img');
+                img.src = t.url;
+                img.style.cssText = 'width:100px;height:56px;object-fit:cover;display:block';
+                img.alt = 'Frame ' + (idx+1);
+                var badge = document.createElement('div');
+                badge.style.cssText = 'position:absolute;bottom:2px;right:4px;font-size:0.6rem;background:rgba(0,0,0,0.7);color:#fff;padding:1px 5px;border-radius:4px';
+                badge.textContent = t.score;
+                div.appendChild(img);
+                div.appendChild(badge);
+                grid.appendChild(div);
+            });
+            document.getElementById('yt-thumb-candidates').style.display = 'block';
+
+            // Auto-select best
+            if (data.thumbnails.length > 0) {
+                _selectedThumbnail = data.thumbnails[0];
+                grid.children[0].style.borderColor = 'var(--accent)';
+                document.getElementById('yt-thumb-info').textContent = 'Auto-selected: Best frame at ' + data.thumbnails[0].timestamp + 's (score: ' + data.thumbnails[0].score + ')';
+            }
+        }
+    } catch(e) {
+        console.error('Thumbnail scan failed:', e);
+    }
+
+    btn.textContent = 'Scan Best Frames';
+    btn.disabled = false;
+}
+
 // ── Batch AI Metadata Generation ──
 var _batchAiClips = []; // stores AI-generated per-clip metadata
 
@@ -3603,6 +3977,15 @@ async function generateBatchAiMetadata() {
             if (c.ai_generated) html += '<span style="font-size:0.65rem;color:var(--green);margin-left:auto">AI</span>';
             html += '</div>';
             html += '<div style="font-size:0.82rem;color:var(--text-primary);font-weight:500;margin-bottom:3px">' + escHtml(c.title) + '</div>';
+            if (c.titles && c.titles.length > 1) {
+                html += '<div style="font-size:0.68rem;color:var(--text-ghost);margin-bottom:3px">Alt: ' + c.titles.slice(1,3).map(function(t){return escHtml(t)}).join(' | ') + '</div>';
+            }
+            if (c.hook_script) {
+                html += '<div style="font-size:0.72rem;color:#fbbf24;margin-bottom:3px">🎤 ' + escHtml(c.hook_script) + '</div>';
+            }
+            if (c.pinned_comment) {
+                html += '<div style="font-size:0.70rem;color:var(--text-secondary);margin-bottom:3px">📌 ' + escHtml(c.pinned_comment.substring(0,80)) + '</div>';
+            }
             html += '<div style="font-size:0.72rem;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((c.tags || []).join(', ')) + '</div>';
             html += '</div>';
         }
@@ -3619,6 +4002,7 @@ async function generateBatchAiMetadata() {
 async function startYoutubeUpload() {
     var btn = document.getElementById('yt-start-upload-btn');
     btn.disabled = true;
+    btn.textContent = 'Preparing...';
     var privacy = document.getElementById('yt-privacy').value;
     var category = document.getElementById('yt-category').value;
     var tagsRaw = document.getElementById('yt-tags').value;
@@ -3631,6 +4015,21 @@ async function startYoutubeUpload() {
     // Use AI-generated per-clip metadata if available, otherwise use the generic ytCurrentClipsMeta
     var clipsMeta = _batchAiClips.length > 0 ? _batchAiClips : ytCurrentClipsMeta;
 
+    // ── Step 1: Modulate clips if enabled ──
+    var clipFiles = clipsMeta.map(function(c) { return c.filename; });
+    try {
+        btn.textContent = 'Modulating...';
+        var modulatedFiles = await modulateAllClips(ytCurrentJobId, clipFiles);
+        // Update clipsMeta filenames to modulated versions
+        for (var i = 0; i < clipsMeta.length && i < modulatedFiles.length; i++) {
+            clipsMeta[i].filename = modulatedFiles[i];
+        }
+    } catch(e) {
+        console.warn('Modulation step failed, using originals:', e);
+    }
+
+    btn.textContent = 'Uploading...';
+
     try {
         var res = await fetch('/api/youtube/upload', {
             method: 'POST',
@@ -3641,13 +4040,13 @@ async function startYoutubeUpload() {
             })
         });
         var data = await res.json();
-        if (data.error) { alert(data.error); btn.disabled = false; return; }
+        if (data.error) { alert(data.error); btn.disabled = false; btn.textContent = 'Upload All Clips'; return; }
         document.getElementById('yt-upload-settings').style.display = 'none';
         document.getElementById('yt-upload-progress').style.display = 'block';
         var uploadJobId = data.upload_job_id;
         ytUploadPoll = setInterval(function() { pollYoutubeUpload(uploadJobId); }, 1500);
         pollYoutubeUpload(uploadJobId);
-    } catch(e) { alert('Upload error: ' + e.message); btn.disabled = false; }
+    } catch(e) { alert('Upload error: ' + e.message); btn.disabled = false; btn.textContent = 'Upload All Clips'; }
 }
 
 async function pollYoutubeUpload(uploadJobId) {

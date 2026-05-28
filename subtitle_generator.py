@@ -352,10 +352,10 @@ def burn_subtitles(video_path: str, srt_content: str, output_path: str,
             if is_vertical:
                 # Vertical 9:16 video: ~4% of width → ~43px on 1080w
                 # Standard TikTok/Shorts subtitle size — readable without overwhelming
-                font_size = max(20, int(w * 0.04))
+                font_size = max(23, int(w * 0.04) + 3)
             else:
                 # Landscape: ~3.5% of height
-                font_size = max(18, int(h * 0.035))
+                font_size = max(21, int(h * 0.035) + 3)
 
         # Position mapping
         margin_l = int(w * 0.05)  # horizontal padding so text doesn't touch edges

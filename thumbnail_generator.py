@@ -104,6 +104,225 @@ def _get_video_dimensions(video_path: str) -> tuple:
         return 1080, 1920
 
 
+def score_frame(frame_path: str) -> float:
+    """
+    Score a single frame for visual impact using FFmpeg signalstats.
+    Higher score = more visually striking = better thumbnail candidate.
+
+    Scores based on:
+    - Contrast (standard deviation of luminance — high = dynamic range)
+    - Saturation (colorfulness — high = eye-catching)
+    - Entropy approximation (file size as proxy — complex scenes score higher)
+    """
+    score = 0.0
+
+    try:
+        # Use FFmpeg signalstats to get YMIN, YMAX, SATMIN, SATMAX
+        cmd = [
+            "ffprobe", "-v", "quiet",
+            "-f", "lavfi",
+            "-i", f"movie='{frame_path.replace(os.sep, '/')}',signalstats",
+            "-show_entries", "frame_tags=lavfi.signalstats.YMIN,lavfi.signalstats.YMAX,"
+                            "lavfi.signalstats.YAVG,lavfi.signalstats.SATAVG",
+            "-print_format", "json",
+        ]
+        result = subprocess.run(cmd, capture_output=True, encoding='utf-8',
+                                errors='replace', timeout=10)
+
+        if result.returncode == 0 and result.stdout:
+            data = json.loads(result.stdout)
+            frames = data.get("frames", [])
+            if frames:
+                tags = frames[0].get("tags", {})
+                ymin = float(tags.get("lavfi.signalstats.YMIN", 16))
+                ymax = float(tags.get("lavfi.signalstats.YMAX", 235))
+                yavg = float(tags.get("lavfi.signalstats.YAVG", 128))
+                satavg = float(tags.get("lavfi.signalstats.SATAVG", 50))
+
+                # Contrast score: dynamic range of luminance (0-255)
+                contrast = (ymax - ymin) / 255.0
+                score += contrast * 40  # max 40 points
+
+                # Brightness penalty: avoid too dark or too bright
+                brightness_deviation = abs(yavg - 128) / 128.0
+                score -= brightness_deviation * 10  # penalty up to 10
+
+                # Saturation score: colorful frames are more eye-catching
+                sat_score = min(satavg / 100.0, 1.0)
+                score += sat_score * 30  # max 30 points
+    except Exception:
+        pass
+
+    # File size as entropy proxy: complex/detailed frames = larger files
+    try:
+        fsize = os.path.getsize(frame_path)
+        # Normalize: typical PNG frame is 200KB-2MB
+        size_score = min(fsize / (1024 * 1024), 1.0)  # cap at 1MB
+        score += size_score * 20  # max 20 points
+    except Exception:
+        pass
+
+    return max(score, 0.0)
+
+
+def _detect_scene_changes(video_path: str, threshold: float = 0.3) -> list:
+    """
+    Detect scene-change timestamps using FFmpeg's scene filter.
+    Scene changes = visual peaks where something dramatic happens.
+    Returns list of timestamps (float seconds).
+    """
+    cmd = [
+        "ffmpeg", "-i", video_path,
+        "-vf", f"select='gt(scene,{threshold})',showinfo",
+        "-vsync", "vfr",
+        "-f", "null", "-"
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, encoding='utf-8',
+            errors='replace', timeout=60
+        )
+        import re
+        timestamps = []
+        for match in re.finditer(r'pts_time:(\d+\.?\d*)', result.stderr):
+            ts = float(match.group(1))
+            timestamps.append(ts)
+        logger.info(f"Scene changes detected: {len(timestamps)} at threshold={threshold}")
+        return timestamps
+    except Exception as e:
+        logger.warning(f"Scene detection failed: {e}")
+        return []
+
+
+def _extract_frame_at(video_path: str, timestamp: float, label: str = "") -> Optional[dict]:
+    """Extract a single frame at a specific timestamp. Returns dict or None."""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        frame_path = tmp.name
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(max(0, timestamp)),
+        "-i", video_path,
+        "-vframes", "1",
+        "-q:v", "2",
+        frame_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace')
+    if result.returncode == 0 and os.path.exists(frame_path) and os.path.getsize(frame_path) > 0:
+        return {"path": frame_path, "timestamp": round(timestamp, 3), "label": label}
+    else:
+        if os.path.exists(frame_path):
+            os.unlink(frame_path)
+        return None
+
+
+def pick_top_frames(video_path: str, num_candidates: int = 20,
+                     top_n: int = 5) -> list:
+    """
+    Find the most eye-catching frames from ANYWHERE in the video.
+
+    Multi-strategy extraction:
+    1. First frame + last frame (always included as candidates)
+    2. Scene-change detection (dramatic visual shifts = action peaks)
+    3. FFmpeg thumbnail filter (built-in visual-interest detection)
+    4. Evenly-spaced grid (fallback to cover gaps)
+
+    All candidates scored by contrast, saturation, and visual complexity.
+
+    Returns:
+        List of dicts: [{"path": str, "timestamp": float, "score": float}, ...]
+        Sorted by score descending (best first).
+    """
+    duration = _get_video_duration(video_path)
+    if duration <= 0:
+        duration = 10.0
+
+    candidates = []
+    seen_timestamps = set()  # avoid duplicate timestamps within 0.3s
+
+    def _is_duplicate(ts):
+        for s in seen_timestamps:
+            if abs(s - ts) < 0.3:
+                return True
+        return False
+
+    def _add_candidate(frame_dict):
+        if frame_dict and not _is_duplicate(frame_dict["timestamp"]):
+            seen_timestamps.add(frame_dict["timestamp"])
+            candidates.append(frame_dict)
+
+    # ── Strategy 1: First frame + last frame ──
+    # These are often the most impactful (opening action, closing climax)
+    _add_candidate(_extract_frame_at(video_path, 0.1, "first"))
+    _add_candidate(_extract_frame_at(video_path, max(0.5, duration - 0.3), "last"))
+    # Also grab near-end (0.5s before end) for the "WTF frame"
+    if duration > 2:
+        _add_candidate(_extract_frame_at(video_path, duration - 1.0, "near_end"))
+
+    # ── Strategy 2: Scene-change detection ──
+    # Find moments where the visual content shifts dramatically
+    scene_timestamps = _detect_scene_changes(video_path, threshold=0.25)
+    for ts in scene_timestamps[:8]:  # cap at 8 scene changes
+        _add_candidate(_extract_frame_at(video_path, ts, "scene_change"))
+
+    # ── Strategy 3: FFmpeg thumbnail filter ──
+    # FFmpeg's built-in algorithm picks high-contrast, visually interesting frames
+    for batch in range(min(3, max(1, int(duration / 3)))):
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            thumb_path = tmp.name
+        # thumbnail=N means analyze N frames and pick the best one
+        skip_frames = batch * 100
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-vf", f"select='gte(n,{skip_frames})',thumbnail=100",
+            "-vframes", "1",
+            "-q:v", "2",
+            thumb_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=30)
+        if result.returncode == 0 and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+            # Estimate timestamp from frame number (approximate)
+            est_ts = (skip_frames + 50) / 24.0  # assuming ~24fps
+            est_ts = min(est_ts, duration - 0.1)
+            frame = {"path": thumb_path, "timestamp": round(est_ts, 3), "label": "ffmpeg_pick"}
+            _add_candidate(frame)
+        else:
+            if os.path.exists(thumb_path):
+                os.unlink(thumb_path)
+
+    # ── Strategy 4: Evenly-spaced grid (fill remaining slots) ──
+    grid_count = max(4, num_candidates - len(candidates))
+    interval = duration / (grid_count + 1)
+    for i in range(1, grid_count + 1):
+        ts = interval * i
+        if not _is_duplicate(ts):
+            _add_candidate(_extract_frame_at(video_path, ts, "grid"))
+
+    # ── Score all candidates ──
+    scored = []
+    for frame in candidates:
+        frame["score"] = round(score_frame(frame["path"]), 2)
+        scored.append(frame)
+
+    # Sort by score descending
+    scored.sort(key=lambda x: x["score"], reverse=True)
+
+    # Clean up frames that didn't make the cut
+    for frame in scored[top_n:]:
+        if os.path.exists(frame["path"]):
+            os.unlink(frame["path"])
+
+    top = scored[:top_n]
+    labels = [f["label"] for f in top]
+    logger.info(
+        f"Thumbnail candidates: {len(candidates)} extracted, "
+        f"top {len(top)} scored [{', '.join(labels)}], "
+        f"best={top[0]['score'] if top else 0}"
+    )
+    return top
+
+
 def extract_frames(video_path: str, num_frames: int = 10) -> list:
     """
     Extract evenly-spaced frames from video for analysis.
