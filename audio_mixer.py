@@ -137,7 +137,7 @@ def _replace_audio(video_path: str, audio_path: str, output_path: str,
             pass  # probe failed, proceed anyway — the -an flag is reliable
 
         # ── Step 2: Mux silent video + commentary ──
-        vol_val = max(commentary_volume, 1.0) * 1.5
+        vol_val = commentary_volume * 1.5
         vol_filter = f"volume={vol_val},alimiter=limit=0.95"
 
         mux_cmd = [

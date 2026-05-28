@@ -38,6 +38,13 @@ from trainer import PatternTrainer
 from subtitle_generator import generate_subtitles, burn_subtitles, burn_text_overlay
 from thumbnail_generator import generate_template_thumbnail, generate_ai_thumbnail, pick_best_frame
 import youtube_uploader
+from content_factory import (
+    start_generation as factory_start, get_job as factory_get_job,
+    list_jobs as factory_list_jobs, cleanup_job as factory_cleanup_job
+)
+from trend_scout import scout_trending, get_available_categories as get_trend_categories
+from script_generator import get_style_presets as get_script_styles
+from music_mixer import get_mood_options
 
 # ─── App Setup ───
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -1138,6 +1145,137 @@ def generate_thumbnail():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/clips/modulate', methods=['POST'])
+def modulate_clip():
+    """Apply pixel modulation transforms to a clip for hash uniqueness."""
+    from video_modulator import modulate_video, ModulationConfig, get_presets
+
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    preset = data.get('preset', '')  # preset name OR empty for custom
+    custom_config = data.get('config', {})  # custom config if no preset
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_dir = _find_job_dir(job_id)
+    clip_path = os.path.join(clip_dir, filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    try:
+        # Build config from preset or custom values
+        if preset:
+            presets = get_presets()
+            if preset not in presets:
+                return jsonify({'error': f'Unknown preset: {preset}. Options: {list(presets.keys())}'}), 400
+            cfg_dict = presets[preset]["config"]
+            config = ModulationConfig(**cfg_dict)
+        else:
+            config = ModulationConfig(
+                zoom_percent=float(custom_config.get('zoom_percent', 4.0)),
+                mirror_flip=bool(custom_config.get('mirror_flip', False)),
+                color_grade=custom_config.get('color_grade', 'warm'),
+                grain_overlay=bool(custom_config.get('grain_overlay', True)),
+                grain_intensity=float(custom_config.get('grain_intensity', 0.05)),
+                saturation_boost=float(custom_config.get('saturation_boost', 1.10)),
+                black_crush=float(custom_config.get('black_crush', 0.05)),
+                speed_shift=float(custom_config.get('speed_shift', 1.0)),
+                burn_subtitles=bool(custom_config.get('burn_subtitles', False)),
+            )
+
+        # Check for subtitle file if burn_subtitles requested
+        if config.burn_subtitles:
+            stem = Path(filename).stem
+            srt_path = os.path.join(clip_dir, f"{stem}.srt")
+            if os.path.isfile(srt_path):
+                config.subtitle_path = srt_path
+
+        # Output path: original_name_mod.mp4
+        stem = Path(filename).stem
+        ext = Path(filename).suffix
+        output_name = f"{stem}_mod{ext}"
+        output_path = os.path.join(clip_dir, output_name)
+
+        result = modulate_video(clip_path, output_path, config)
+
+        if not result.success:
+            return jsonify({'error': result.error}), 500
+
+        return jsonify({
+            'success': True,
+            'modulated_url': f'/clips/{job_id}/{output_name}',
+            'modulated_filename': output_name,
+            'transforms': result.transforms_applied,
+            'original_size_mb': round(result.original_size / 1024 / 1024, 2),
+            'modulated_size_mb': round(result.modulated_size / 1024 / 1024, 2),
+            'duration': round(result.duration, 1),
+        })
+
+    except Exception as e:
+        logger.exception("Video modulation failed")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/clips/modulation-presets', methods=['GET'])
+def get_modulation_presets():
+    """Return available modulation presets for the UI."""
+    from video_modulator import get_presets
+    return jsonify(get_presets())
+
+
+@app.route('/api/clips/top-thumbnails', methods=['POST'])
+def get_top_thumbnails():
+    """Score and return the top N visually striking frames for thumbnail selection."""
+    from thumbnail_generator import pick_top_frames
+
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    top_n = int(data.get('top_n', 5))
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_dir = _find_job_dir(job_id)
+    clip_path = os.path.join(clip_dir, filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    try:
+        top_frames = pick_top_frames(clip_path, num_candidates=20, top_n=top_n)
+
+        # Save scored frames to clip dir and build URLs
+        results = []
+        for i, frame in enumerate(top_frames):
+            stem = Path(filename).stem
+            thumb_name = f"{stem}_thumb_candidate_{i}.png"
+            thumb_dest = os.path.join(clip_dir, thumb_name)
+
+            # Move frame from temp to clip dir
+            import shutil
+            shutil.move(frame["path"], thumb_dest)
+
+            results.append({
+                "url": f"/clips/{job_id}/{thumb_name}",
+                "filename": thumb_name,
+                "timestamp": round(frame["timestamp"], 2),
+                "score": frame["score"],
+                "rank": i + 1,
+            })
+
+        return jsonify({
+            'success': True,
+            'thumbnails': results,
+            'total_analyzed': 20,
+        })
+
+    except Exception as e:
+        logger.exception("Thumbnail scoring failed")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/check-url', methods=['POST'])
 def check_url():
     """Check if a URL is valid and get video info."""
@@ -1591,7 +1729,7 @@ def youtube_generate_metadata():
             api_key=llm_config.nvidia_api_key,
         )
 
-        prompt = f"""You are a YouTube Shorts optimization expert. Generate metadata for a short video clip to MAXIMIZE reach, views, and engagement.
+        prompt = f"""Act as a ruthless, highly successful YouTube Shorts strategist who has grown channels from 0 to 1M+ subscribers. Generate metadata for a short video clip to MAXIMIZE click-through rate (CTR), algorithm reach, and viewer retention.
 
 Clip info:
 - Filename: {filename}
@@ -1600,15 +1738,27 @@ Clip info:
 
 Generate the following in JSON format:
 {{
-    "title": "Catchy, click-worthy title (max 80 chars). Use power words, curiosity gaps, or emotional hooks. DO NOT use generic titles.",
-    "description": "Engaging description (max 300 chars). Include context, call to action, and relevant keywords. Add #Shorts at the end.",
-    "tags": ["tag1", "tag2", ...] (10-15 highly relevant tags for discoverability. Mix broad and niche tags.)
+    "titles": [
+        "Title option 1 (BEST — under 50 chars)",
+        "Title option 2 (under 50 chars)",
+        "Title option 3 (under 50 chars)"
+    ],
+    "title": "Your #1 recommended title from above",
+    "description": "2 sentences max. First sentence = visceral hook that stops the scroll. Second = context + call to action. End with exactly 3 high-volume hashtags relevant to the content.",
+    "tags": ["tag1", "tag2", "..."],
+    "pinned_comment": "A controversial or highly debatable question to drive immediate comments and engagement. Must feel like a real opinion, not marketing.",
+    "hook_script": "The exact 1-sentence voiceover script for the first 3 seconds. Start with the CLIMAX, not setup. Example: '99% of players would miss this. Watch his right foot.'"
 }}
 
-Rules:
-- Title must be scroll-stopping and make people WANT to click
-- Tags should include trending/searchable terms related to the content
-- Description should feel natural, not spammy
+RULES (non-negotiable):
+- Titles MUST be under 50 characters — no exceptions
+- Titles must create intense curiosity or FOMO — do NOT summarize the video, tease the most shocking part
+- Avoid generic clickbait ("You won't believe...", "Wait for it...")
+- Use power words: impossible, banned, secret, exposed, insane, untold, legendary
+- Description first sentence must hook HARD — if someone reads it, they MUST watch
+- Tags: exactly 12 tags. Mix 4 broad high-volume tags + 4 medium niche tags + 4 long-tail specific tags
+- Pinned comment must be polarizing enough to make people reply — think debate, not agreement
+- Hook script: NEVER start with "Today we..." or "In this video..." — start with the climax/payoff
 - Output ONLY valid JSON, nothing else"""
 
         response = client.chat.completions.create(
@@ -1631,8 +1781,11 @@ Rules:
         result = json.loads(raw)
         return jsonify({
             'title': result.get('title', filename)[:100],
+            'titles': result.get('titles', [result.get('title', filename)])[:5],
             'description': result.get('description', '')[:5000],
             'tags': result.get('tags', [])[:15],
+            'pinned_comment': result.get('pinned_comment', ''),
+            'hook_script': result.get('hook_script', ''),
             'ai_generated': True,
         })
 
@@ -1672,6 +1825,8 @@ def youtube_generate_metadata_batch():
         and '_subtitled' not in f.lower()
         and '_overlay' not in f.lower()
         and '_thumb_' not in f.lower()
+        and '_mod.' not in f.lower()
+        and '_narrated.' not in f.lower()
     ])
 
     if not clip_files:
@@ -1707,29 +1862,29 @@ def youtube_generate_metadata_batch():
                     base_url="https://integrate.api.nvidia.com/v1",
                     api_key=llm_config.nvidia_api_key,
                 )
-                prompt = f"""You are a YouTube Shorts optimization expert. Generate metadata for a short video clip to MAXIMIZE reach, views, and engagement.
+                prompt = f"""Act as a ruthless YouTube Shorts strategist. Generate metadata for clip {idx+1}/{len(clip_files)} to MAXIMIZE CTR and algorithm reach.
 
 Clip info:
 - Filename: {filename}
 - Duration: {int(duration)} seconds
-- Clip {idx+1} of {len(clip_files)}
-- Transcript/content: {transcript_text[:1200] if transcript_text else 'No transcript available. Generate based on filename.'}
+- Transcript: {transcript_text[:1200] if transcript_text else 'No transcript. Generate based on filename.'}
 
-Generate the following in JSON format:
+Return ONLY valid JSON:
 {{
-    "title": "Catchy, click-worthy title (max 80 chars). Use power words, curiosity gaps, or emotional hooks.",
-    "description": "Engaging description (max 300 chars). Include context and #Shorts at the end.",
-    "tags": ["tag1", "tag2", ...] (10-15 highly relevant tags for discoverability)
+    "titles": ["Title 1 (under 50 chars)", "Title 2", "Title 3"],
+    "title": "Best title from above",
+    "description": "Hook sentence + context. End with 3 hashtags.",
+    "tags": ["12 tags mixing broad + niche"],
+    "pinned_comment": "Polarizing question to drive comments",
+    "hook_script": "1-sentence voiceover for first 3 seconds — start with climax"
 }}
 
-Rules:
-- Title must be scroll-stopping and unique for this specific clip
-- Output ONLY valid JSON, nothing else"""
+Rules: titles under 50 chars, create FOMO not summaries, use power words, no generic clickbait. Output ONLY JSON."""
 
                 response = client.chat.completions.create(
                     model=llm_config.nvidia_model,
                     messages=[
-                        {"role": "system", "content": "You are a viral content analyst. Respond only with valid JSON."},
+                        {"role": "system", "content": "You are a viral content strategist. Respond only with valid JSON."},
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0.7,
@@ -1743,8 +1898,11 @@ Rules:
 
                 parsed = json.loads(raw)
                 title = parsed.get('title', filename)[:100]
+                titles = parsed.get('titles', [title])[:5]
                 description = parsed.get('description', '')[:5000]
                 tags = parsed.get('tags', [])[:15]
+                pinned_comment = parsed.get('pinned_comment', '')
+                hook_script = parsed.get('hook_script', '')
                 ai_generated = True
             except Exception as e:
                 logger.warning(f"AI metadata failed for {filename}: {e}")
@@ -1756,12 +1914,16 @@ Rules:
                 clip_number=idx + 1, total_clips=len(clip_files),
             )
             title, description, tags = meta['title'], meta['description'], meta['tags']
+            titles, pinned_comment, hook_script = [title], '', ''
 
         results.append({
             'filename': filename,
             'title': title,
+            'titles': titles if ai_generated else [title],
             'description': description,
             'tags': tags,
+            'pinned_comment': pinned_comment if ai_generated else '',
+            'hook_script': hook_script if ai_generated else '',
             'ai_generated': ai_generated,
         })
 
@@ -1877,6 +2039,8 @@ def youtube_upload():
         and '_subtitled' not in f.lower()
         and '_overlay' not in f.lower()
         and '_thumb_' not in f.lower()
+        and '_mod.' not in f.lower()
+        and '_narrated.' not in f.lower()
     ])
 
     if not clip_files:
@@ -2037,6 +2201,129 @@ def process_video():
         'error': 'This endpoint is deprecated. Use the Video Library panel to add videos, '
                  'then use Smart Clips / Manual Split / Sequential Reels.'
     }), 400
+
+
+# ═══════════════════════════════════════════════════
+#  CONTENT FACTORY — AI Video Generation from Trends
+# ═══════════════════════════════════════════════════
+
+@app.route('/factory')
+def factory_page():
+    """Serve the Content Factory UI — completely separate from clipper."""
+    return render_template('factory.html')
+
+
+@app.route('/api/factory/trending', methods=['GET'])
+def api_factory_trending():
+    """Fetch trending topics from YouTube + Google Trends + Reddit."""
+    try:
+        region = request.args.get('region', 'US')
+        category = request.args.get('category', '24')
+        max_results = int(request.args.get('max', 30))
+
+        topics = scout_trending(
+            region=region,
+            max_per_source=max_results // 3 + 1,
+        )
+
+        return jsonify({
+            'success': True,
+            'topics': topics,
+            'count': len(topics),
+            'categories': get_trend_categories(),
+        })
+    except Exception as e:
+        logger.error(f"Trending fetch error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/factory/generate', methods=['POST'])
+def api_factory_generate():
+    """Start a content generation job from a trending topic."""
+    try:
+        data = request.get_json() or {}
+        topic = data.get('topic', '').strip()
+        if not topic:
+            return jsonify({'success': False, 'error': 'Topic is required'}), 400
+
+        output_dir = os.path.join(app.config['CLIPS_FOLDER'], 'factory')
+
+        job_id = factory_start(
+            topic=topic,
+            topic_description=data.get('description', ''),
+            topic_keywords=data.get('keywords', []),
+            target_duration=int(data.get('target_duration', 45)),
+            tone=data.get('tone', 'energetic'),
+            style=data.get('style', 'informative'),
+            music_mood=data.get('music_mood', 'upbeat'),
+            music_volume=float(data.get('music_volume', 0.15)),
+            color_grade=data.get('color_grade', 'cinematic'),
+            output_base_dir=output_dir,
+        )
+
+        return jsonify({'success': True, 'job_id': job_id})
+
+    except Exception as e:
+        logger.error(f"Factory generate error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/factory/jobs', methods=['GET'])
+def api_factory_jobs():
+    """List all content factory jobs."""
+    try:
+        jobs = factory_list_jobs()
+        return jsonify({'success': True, 'jobs': jobs})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/factory/job/<job_id>', methods=['GET'])
+def api_factory_job_status(job_id):
+    """Get status of a specific factory job."""
+    try:
+        job = factory_get_job(job_id)
+        if not job:
+            return jsonify({'success': False, 'error': 'Job not found'}), 404
+        return jsonify({'success': True, 'job': job.to_dict()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/factory/job/<job_id>/video')
+def api_factory_serve_video(job_id):
+    """Serve the final generated video."""
+    try:
+        job = factory_get_job(job_id)
+        if not job or not job.final_path or not os.path.isfile(job.final_path):
+            return jsonify({'success': False, 'error': 'Video not found'}), 404
+
+        directory = os.path.dirname(job.final_path)
+        filename = os.path.basename(job.final_path)
+        return send_from_directory(directory, filename, mimetype='video/mp4')
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/factory/job/<job_id>', methods=['DELETE'])
+def api_factory_delete_job(job_id):
+    """Delete a factory job and its output."""
+    try:
+        success = factory_cleanup_job(job_id)
+        return jsonify({'success': success})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/factory/config', methods=['GET'])
+def api_factory_config():
+    """Return configuration options for the factory UI."""
+    return jsonify({
+        'success': True,
+        'styles': get_script_styles(),
+        'music_moods': get_mood_options(),
+        'categories': get_trend_categories(),
+    })
 
 
 # ═══════════════════════════════════════════════════

@@ -16,6 +16,10 @@ google-api-python-client>=2.90
 # AI Commentary / TTS
 edge-tts>=6.1          # Microsoft Edge neural TTS (free, no API key)
 
+# Content Factory — visual generation
+Pillow>=10.0           # Text rendering for video scene generation
+requests>=2.31         # API calls (stock footage, trends, etc.)
+
 # LLM Fallback (optional — install only what you need)
 groq>=0.9
 google-generativeai>=0.7

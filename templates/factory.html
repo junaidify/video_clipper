@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Factory — AI Video Generator</title>
+<style>
+/* ═══ RESET & BASE ═══ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a28;--bg4:#222236;
+  --text:#e8e8f0;--text2:#9898b0;--text3:#6868a0;
+  --accent:#7c3aed;--accent2:#a855f7;--accent-glow:rgba(124,58,237,.25);
+  --green:#10b981;--green-glow:rgba(16,185,129,.2);
+  --amber:#f59e0b;--amber-glow:rgba(245,158,11,.2);
+  --red:#ef4444;--blue:#3b82f6;--cyan:#06b6d4;
+  --radius:12px;--radius-sm:8px;
+  --shadow:0 4px 24px rgba(0,0,0,.4);
+  --font:'Inter',system-ui,-apple-system,sans-serif;
+}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+html{font-size:15px}
+body{font-family:var(--font);background:var(--bg);color:var(--text);
+     min-height:100vh;overflow-x:hidden;line-height:1.6}
+
+/* ═══ LAYOUT ═══ */
+.factory-container{max-width:1400px;margin:0 auto;padding:20px 28px}
+
+/* ═══ HEADER ═══ */
+.factory-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:24px 0 32px;border-bottom:1px solid var(--bg4);margin-bottom:32px;
+}
+.factory-logo{display:flex;align-items:center;gap:14px}
+.factory-logo-icon{
+  width:48px;height:48px;border-radius:14px;
+  background:linear-gradient(135deg,var(--accent),var(--cyan));
+  display:flex;align-items:center;justify-content:center;font-size:24px;
+  box-shadow:0 0 20px var(--accent-glow);
+}
+.factory-logo h1{font-size:1.6rem;font-weight:700;
+  background:linear-gradient(135deg,#fff,var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.factory-logo p{font-size:.82rem;color:var(--text3);margin-top:2px}
+.back-link{
+  color:var(--text3);text-decoration:none;font-size:.85rem;
+  padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--bg4);
+  transition:.2s;
+}
+.back-link:hover{color:var(--text);border-color:var(--accent);background:var(--bg3)}
+
+/* ═══ SECTION TABS ═══ */
+.factory-tabs{
+  display:flex;gap:4px;background:var(--bg2);border-radius:var(--radius);
+  padding:4px;margin-bottom:28px;width:fit-content;
+}
+.factory-tab{
+  padding:10px 24px;border-radius:var(--radius-sm);cursor:pointer;
+  font-size:.88rem;font-weight:500;color:var(--text3);transition:.2s;
+  border:none;background:transparent;
+}
+.factory-tab:hover{color:var(--text);background:var(--bg3)}
+.factory-tab.active{color:#fff;background:var(--accent);
+  box-shadow:0 2px 12px var(--accent-glow)}
+
+/* ═══ PANELS ═══ */
+.factory-panel{display:none}
+.factory-panel.active{display:block}
+
+/* ═══ TRENDING PANEL ═══ */
+.trending-controls{
+  display:flex;gap:12px;align-items:center;margin-bottom:24px;flex-wrap:wrap;
+}
+.trending-controls select,.trending-controls input{
+  background:var(--bg3);border:1px solid var(--bg4);color:var(--text);
+  padding:10px 14px;border-radius:var(--radius-sm);font-size:.88rem;
+  font-family:var(--font);
+}
+.trending-controls select:focus,.trending-controls input:focus{
+  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)
+}
+
+.btn{
+  padding:10px 22px;border:none;border-radius:var(--radius-sm);
+  font-size:.88rem;font-weight:600;cursor:pointer;transition:.2s;
+  font-family:var(--font);display:inline-flex;align-items:center;gap:8px;
+}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 2px 12px var(--accent-glow)}
+.btn-primary:hover{background:var(--accent2);transform:translateY(-1px)}
+.btn-green{background:var(--green);color:#fff;box-shadow:0 2px 12px var(--green-glow)}
+.btn-green:hover{opacity:.9;transform:translateY(-1px)}
+.btn-outline{background:transparent;color:var(--text2);border:1px solid var(--bg4)}
+.btn-outline:hover{border-color:var(--accent);color:var(--text)}
+.btn-sm{padding:7px 14px;font-size:.82rem}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+/* ═══ TRENDING GRID ═══ */
+.trending-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
+  gap:16px;
+}
+.trend-card{
+  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
+  padding:20px;transition:.25s;cursor:pointer;position:relative;overflow:hidden;
+}
+.trend-card:hover{border-color:var(--accent);transform:translateY(-2px);
+  box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.trend-card .source-badge{
+  position:absolute;top:12px;right:12px;font-size:.7rem;font-weight:600;
+  padding:3px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px;
+}
+.source-badge.youtube{background:rgba(255,0,0,.15);color:#ff4444}
+.source-badge.google_trends{background:rgba(66,133,244,.15);color:#4285f4}
+.source-badge.reddit{background:rgba(255,87,34,.15);color:#ff5722}
+.trend-card h3{font-size:1rem;font-weight:600;margin-bottom:8px;
+  padding-right:80px;line-height:1.4}
+.trend-card .trend-meta{display:flex;gap:16px;font-size:.78rem;color:var(--text3);margin-bottom:10px}
+.trend-card .trend-score{
+  display:flex;align-items:center;gap:6px;
+}
+.score-bar{width:60px;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
+.score-fill{height:100%;border-radius:3px;transition:.3s}
+.trend-card .trend-keywords{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.trend-card .trend-keywords span{
+  font-size:.72rem;padding:3px 8px;border-radius:4px;
+  background:var(--bg4);color:var(--text3);
+}
+.trend-card .use-btn{
+  margin-top:14px;width:100%;padding:10px;border:none;border-radius:var(--radius-sm);
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff;font-weight:600;font-size:.85rem;cursor:pointer;transition:.2s;
+  font-family:var(--font);
+}
+.trend-card .use-btn:hover{opacity:.9;transform:translateY(-1px)}
+
+/* ═══ GENERATE PANEL ═══ */
+.generate-layout{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+@media(max-width:900px){.generate-layout{grid-template-columns:1fr}}
+
+.config-section{
+  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
+  padding:24px;
+}
+.config-section h2{font-size:1.1rem;font-weight:600;margin-bottom:18px;
+  display:flex;align-items:center;gap:10px}
+.config-section h2 span{font-size:1.2rem}
+
+.form-group{margin-bottom:18px}
+.form-group label{display:block;font-size:.82rem;font-weight:500;
+  color:var(--text2);margin-bottom:6px}
+.form-group input,.form-group select,.form-group textarea{
+  width:100%;background:var(--bg3);border:1px solid var(--bg4);color:var(--text);
+  padding:10px 14px;border-radius:var(--radius-sm);font-size:.88rem;
+  font-family:var(--font);transition:.2s;
+}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{
+  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)
+}
+.form-group textarea{resize:vertical;min-height:80px}
+
+.style-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.style-card{
+  padding:12px;border-radius:var(--radius-sm);border:2px solid var(--bg4);
+  cursor:pointer;text-align:center;transition:.2s;background:var(--bg3);
+}
+.style-card:hover{border-color:var(--text3)}
+.style-card.selected{border-color:var(--accent);background:rgba(124,58,237,.1)}
+.style-card .style-icon{font-size:1.4rem;margin-bottom:4px}
+.style-card .style-name{font-size:.82rem;font-weight:600}
+.style-card .style-desc{font-size:.7rem;color:var(--text3);margin-top:2px}
+
+.range-group{display:flex;align-items:center;gap:12px}
+.range-group input[type="range"]{flex:1;accent-color:var(--accent)}
+.range-group .range-val{font-size:.85rem;font-weight:600;color:var(--accent);min-width:40px;text-align:right}
+
+/* ═══ PREVIEW PANEL ═══ */
+.script-preview{
+  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
+  padding:24px;max-height:600px;overflow-y:auto;
+}
+.script-preview h2{font-size:1.1rem;font-weight:600;margin-bottom:16px}
+.scene-block{
+  padding:14px;margin-bottom:10px;border-radius:var(--radius-sm);
+  background:var(--bg3);border-left:3px solid var(--accent);
+}
+.scene-block .scene-head{display:flex;justify-content:space-between;
+  font-size:.78rem;color:var(--text3);margin-bottom:6px}
+.scene-block .scene-narration{font-size:.9rem;line-height:1.5}
+.scene-block .scene-visual{
+  margin-top:8px;font-size:.78rem;color:var(--cyan);
+  display:flex;align-items:center;gap:6px}
+
+/* ═══ PROGRESS PANEL ═══ */
+.progress-container{
+  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
+  padding:32px;text-align:center;
+}
+.progress-ring{
+  width:160px;height:160px;margin:0 auto 20px;position:relative;
+}
+.progress-ring svg{transform:rotate(-90deg)}
+.progress-ring circle{fill:none;stroke-width:8}
+.progress-ring .bg{stroke:var(--bg4)}
+.progress-ring .fg{stroke:var(--accent);stroke-linecap:round;
+  transition:stroke-dashoffset .5s ease}
+.progress-percent{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:2rem;font-weight:700;
+}
+.progress-stage{font-size:1rem;font-weight:500;margin-bottom:6px}
+.progress-detail{font-size:.85rem;color:var(--text3)}
+
+.stage-dots{display:flex;justify-content:center;gap:8px;margin-top:24px}
+.stage-dot{width:10px;height:10px;border-radius:50%;background:var(--bg4);transition:.3s}
+.stage-dot.active{background:var(--accent);box-shadow:0 0 8px var(--accent-glow)}
+.stage-dot.done{background:var(--green)}
+
+/* ═══ OUTPUT PANEL ═══ */
+.output-gallery{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;
+}
+.output-card{
+  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
+  overflow:hidden;transition:.25s;
+}
+.output-card:hover{border-color:var(--accent);box-shadow:var(--shadow)}
+.output-card video{width:100%;aspect-ratio:9/16;object-fit:cover;background:#000}
+.output-card .output-info{padding:16px}
+.output-card .output-title{font-size:.95rem;font-weight:600;margin-bottom:6px}
+.output-card .output-meta{font-size:.78rem;color:var(--text3);margin-bottom:12px}
+.output-card .output-actions{display:flex;gap:8px}
+
+/* ═══ EMPTY STATE ═══ */
+.empty-state{text-align:center;padding:80px 20px;color:var(--text3)}
+.empty-state .empty-icon{font-size:3rem;margin-bottom:16px;opacity:.5}
+.empty-state h3{font-size:1.1rem;font-weight:500;margin-bottom:8px;color:var(--text2)}
+.empty-state p{font-size:.88rem}
+
+/* ═══ LOADING SPINNER ═══ */
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ═══ SCROLLBAR ═══ */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+/* ═══ TOAST ═══ */
+.toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:var(--radius-sm);font-size:.85rem;
+  color:#fff;animation:slideIn .3s ease;box-shadow:var(--shadow)}
+.toast.success{background:var(--green)}
+.toast.error{background:var(--red)}
+.toast.info{background:var(--blue)}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="factory-container">
+  <!-- HEADER -->
+  <header class="factory-header">
+    <div class="factory-logo">
+      <div class="factory-logo-icon">⚡</div>
+      <div>
+        <h1>Content Factory</h1>
+        <p>AI-Powered Video Generation from Trending Topics</p>
+      </div>
+    </div>
+    <a href="/" class="back-link">← Back to Clipper</a>
+  </header>
+
+  <!-- TABS -->
+  <div class="factory-tabs">
+    <button class="factory-tab active" onclick="switchTab('trending')">🔥 Trending</button>
+    <button class="factory-tab" onclick="switchTab('generate')">🎬 Generate</button>
+    <button class="factory-tab" onclick="switchTab('output')">📦 Output</button>
+  </div>
+
+  <!-- ═══ TRENDING PANEL ═══ -->
+  <div id="panel-trending" class="factory-panel active">
+    <div class="trending-controls">
+      <select id="trend-region" onchange="fetchTrending()">
+        <option value="US">🇺🇸 United States</option>
+        <option value="GB">🇬🇧 United Kingdom</option>
+        <option value="IN">🇮🇳 India</option>
+        <option value="CA">🇨🇦 Canada</option>
+        <option value="AU">🇦🇺 Australia</option>
+        <option value="DE">🇩🇪 Germany</option>
+      </select>
+      <button class="btn btn-primary" onclick="fetchTrending()" id="btn-fetch-trends">
+        🔍 Scan Trends
+      </button>
+      <span id="trend-count" style="font-size:.82rem;color:var(--text3)"></span>
+    </div>
+
+    <div id="trending-grid" class="trending-grid">
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="empty-icon">🔥</div>
+        <h3>Discover What's Trending</h3>
+        <p>Click "Scan Trends" to pull the latest from YouTube, Google Trends, and Reddit</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ GENERATE PANEL ═══ -->
+  <div id="panel-generate" class="factory-panel">
+    <div class="generate-layout">
+      <!-- LEFT: Config -->
+      <div>
+        <div class="config-section" style="margin-bottom:20px">
+          <h2><span>📝</span> Topic & Script</h2>
+          <div class="form-group">
+            <label>Topic</label>
+            <input type="text" id="gen-topic" placeholder="Enter a trending topic or custom idea...">
+          </div>
+          <div class="form-group">
+            <label>Additional Context (optional)</label>
+            <textarea id="gen-description" placeholder="Any angle, facts, or direction for the script..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Script Style</label>
+            <div class="style-grid" id="style-grid"></div>
+          </div>
+          <div class="form-group">
+            <label>Duration</label>
+            <div class="range-group">
+              <input type="range" id="gen-duration" min="15" max="60" value="45" step="5"
+                     oninput="document.getElementById('dur-val').textContent=this.value+'s'">
+              <span class="range-val" id="dur-val">45s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="config-section" style="margin-bottom:20px">
+          <h2><span>🎵</span> Audio & Music</h2>
+          <div class="form-group">
+            <label>Background Music Mood</label>
+            <select id="gen-music-mood"></select>
+          </div>
+          <div class="form-group">
+            <label>Music Volume</label>
+            <div class="range-group">
+              <input type="range" id="gen-music-vol" min="0" max="40" value="15" step="1"
+                     oninput="document.getElementById('mvol-val').textContent=this.value+'%'">
+              <span class="range-val" id="mvol-val">15%</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Tone</label>
+            <select id="gen-tone">
+              <option value="energetic">Energetic</option>
+              <option value="dramatic">Dramatic</option>
+              <option value="calm">Calm</option>
+              <option value="humorous">Humorous</option>
+              <option value="suspenseful">Suspenseful</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn btn-green" onclick="startGeneration()" id="btn-generate"
+                style="width:100%;padding:14px;font-size:1rem">
+          ⚡ Generate Video
+        </button>
+      </div>
+
+      <!-- RIGHT: Preview / Progress -->
+      <div>
+        <!-- Script Preview (shown after script is generated) -->
+        <div id="script-preview" class="script-preview" style="display:none">
+          <h2>📋 Script Preview</h2>
+          <div id="script-scenes"></div>
+        </div>
+
+        <!-- Progress (shown during generation) -->
+        <div id="generation-progress" class="progress-container" style="display:none">
+          <div class="progress-ring">
+            <svg width="160" height="160">
+              <circle class="bg" cx="80" cy="80" r="70"/>
+              <circle class="fg" id="progress-circle" cx="80" cy="80" r="70"
+                      stroke-dasharray="440" stroke-dashoffset="440"/>
+            </svg>
+            <div class="progress-percent" id="progress-percent">0%</div>
+          </div>
+          <div class="progress-stage" id="progress-stage">Initializing...</div>
+          <div class="progress-detail" id="progress-detail"></div>
+          <div class="stage-dots" id="stage-dots">
+            <div class="stage-dot" title="Script"></div>
+            <div class="stage-dot" title="Visuals"></div>
+            <div class="stage-dot" title="TTS"></div>
+            <div class="stage-dot" title="Editing"></div>
+            <div class="stage-dot" title="Music"></div>
+            <div class="stage-dot" title="Done"></div>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div id="generate-empty" class="empty-state">
+          <div class="empty-icon">🎬</div>
+          <h3>Configure & Generate</h3>
+          <p>Pick a topic from Trending or enter your own, configure the style, and hit Generate</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ OUTPUT PANEL ═══ -->
+  <div id="panel-output" class="factory-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:1.1rem;font-weight:600">Generated Videos</h2>
+      <button class="btn btn-outline btn-sm" onclick="refreshOutputs()">🔄 Refresh</button>
+    </div>
+    <div id="output-gallery" class="output-gallery">
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="empty-icon">📦</div>
+        <h3>No Videos Yet</h3>
+        <p>Generate your first video from the Generate tab</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ═══ STATE ═══
+let selectedStyle = 'informative';
+let currentJobId = null;
+let pollTimer = null;
+
+// ═══ INIT ═══
+document.addEventListener('DOMContentLoaded', () => {
+  loadConfig();
+  refreshOutputs();
+});
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/factory/config');
+    const d = await r.json();
+    if (!d.success) return;
+
+    // Render style cards
+    const grid = document.getElementById('style-grid');
+    grid.innerHTML = '';
+    (d.styles || []).forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'style-card' + (s.id === selectedStyle ? ' selected' : '');
+      card.onclick = () => selectStyle(s.id);
+      card.innerHTML = `
+        <div class="style-icon">${s.icon||'📝'}</div>
+        <div class="style-name">${s.label}</div>
+        <div class="style-desc">${s.description||''}</div>
+      `;
+      grid.appendChild(card);
+    });
+
+    // Render music moods
+    const moodSel = document.getElementById('gen-music-mood');
+    moodSel.innerHTML = '';
+    (d.music_moods || []).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = `${m.icon||''} ${m.label} — ${m.description||''}`;
+      if (m.id === 'upbeat') opt.selected = true;
+      moodSel.appendChild(opt);
+    });
+  } catch(e) { console.error('Config load error:', e); }
+}
+
+function selectStyle(id) {
+  selectedStyle = id;
+  document.querySelectorAll('.style-card').forEach(c => {
+    c.classList.toggle('selected', c.querySelector('.style-name')?.textContent.toLowerCase().includes(id));
+  });
+  // Re-select properly
+  document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
+  const cards = document.querySelectorAll('.style-card');
+  cards.forEach(c => {
+    const name = c.querySelector('.style-name').textContent.toLowerCase();
+    if (name === id || name === id.replace('_',' ')) c.classList.add('selected');
+  });
+}
+
+// ═══ TABS ═══
+function switchTab(name) {
+  document.querySelectorAll('.factory-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.factory-panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('panel-'+name).classList.add('active');
+}
+
+// ═══ TRENDING ═══
+async function fetchTrending() {
+  const btn = document.getElementById('btn-fetch-trends');
+  const region = document.getElementById('trend-region').value;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Scanning...';
+
+  try {
+    const r = await fetch(`/api/factory/trending?region=${region}`);
+    const d = await r.json();
+
+    const grid = document.getElementById('trending-grid');
+    if (!d.success || !d.topics?.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <div class="empty-icon">😕</div><h3>No trends found</h3>
+        <p>Try a different region or check your API keys (YOUTUBE_API_KEY)</p></div>`;
+      document.getElementById('trend-count').textContent = '';
+      return;
+    }
+
+    document.getElementById('trend-count').textContent = `${d.topics.length} topics found`;
+    grid.innerHTML = '';
+
+    d.topics.forEach(t => {
+      const scoreColor = t.score > 70 ? 'var(--green)' : t.score > 40 ? 'var(--amber)' : 'var(--text3)';
+      const card = document.createElement('div');
+      card.className = 'trend-card';
+      card.innerHTML = `
+        <span class="source-badge ${t.source}">${t.source.replace('_',' ')}</span>
+        <h3>${escHtml(t.title)}</h3>
+        <div class="trend-meta">
+          <div class="trend-score">
+            Score: <strong style="color:${scoreColor}">${t.score}</strong>
+            <div class="score-bar"><div class="score-fill" style="width:${t.score}%;background:${scoreColor}"></div></div>
+          </div>
+          ${t.view_count ? `<span>👁 ${formatNum(t.view_count)}</span>` : ''}
+          ${t.engagement ? `<span>💬 ${formatNum(t.engagement)}</span>` : ''}
+        </div>
+        ${t.keywords?.length ? `<div class="trend-keywords">${t.keywords.slice(0,5).map(k=>`<span>${escHtml(k)}</span>`).join('')}</div>` : ''}
+        <button class="use-btn" onclick="useTopic(${JSON.stringify(t).replace(/"/g,'&quot;')})">
+          ⚡ Use This Topic
+        </button>
+      `;
+      grid.appendChild(card);
+    });
+  } catch(e) {
+    showToast('Failed to fetch trends: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Scan Trends';
+  }
+}
+
+function useTopic(topic) {
+  document.getElementById('gen-topic').value = topic.title;
+  document.getElementById('gen-description').value = topic.description || '';
+  switchTab('generate');
+  document.querySelectorAll('.factory-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent.includes('Generate'));
+  });
+  showToast(`Topic loaded: "${topic.title}"`, 'info');
+}
+
+// ═══ GENERATE ═══
+async function startGeneration() {
+  const topic = document.getElementById('gen-topic').value.trim();
+  if (!topic) { showToast('Enter a topic first', 'error'); return; }
+
+  const btn = document.getElementById('btn-generate');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Starting...';
+
+  const payload = {
+    topic,
+    description: document.getElementById('gen-description').value,
+    target_duration: parseInt(document.getElementById('gen-duration').value),
+    tone: document.getElementById('gen-tone').value,
+    style: selectedStyle,
+    music_mood: document.getElementById('gen-music-mood').value,
+    music_volume: parseInt(document.getElementById('gen-music-vol').value) / 100,
+  };
+
+  try {
+    const r = await fetch('/api/factory/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+
+    if (!d.success) { showToast(d.error || 'Generation failed', 'error'); return; }
+
+    currentJobId = d.job_id;
+    document.getElementById('generate-empty').style.display = 'none';
+    document.getElementById('script-preview').style.display = 'none';
+    document.getElementById('generation-progress').style.display = 'block';
+
+    // Start polling
+    pollTimer = setInterval(() => pollJobStatus(currentJobId), 2000);
+
+  } catch(e) {
+    showToast('Generation error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '⚡ Generate Video';
+  }
+}
+
+async function pollJobStatus(jobId) {
+  try {
+    const r = await fetch(`/api/factory/job/${jobId}`);
+    const d = await r.json();
+    if (!d.success || !d.job) return;
+
+    const job = d.job;
+    updateProgress(job);
+
+    // Show script preview when available
+    if (job.script && !document.getElementById('script-preview').dataset.loaded) {
+      renderScriptPreview(job.script);
+    }
+
+    if (job.status === 'done' || job.status === 'failed') {
+      clearInterval(pollTimer);
+      pollTimer = null;
+
+      if (job.status === 'done') {
+        showToast('Video generated successfully!', 'success');
+        refreshOutputs();
+        // Auto-switch to output tab after brief delay
+        setTimeout(() => {
+          switchTab('output');
+          document.querySelectorAll('.factory-tab').forEach(t => {
+            t.classList.toggle('active', t.textContent.includes('Output'));
+          });
+        }, 1500);
+      } else {
+        showToast('Generation failed: ' + (job.error || 'Unknown error'), 'error');
+      }
+    }
+  } catch(e) { console.error('Poll error:', e); }
+}
+
+function updateProgress(job) {
+  const pct = job.progress || 0;
+  const circle = document.getElementById('progress-circle');
+  const circumference = 440;
+  circle.style.strokeDashoffset = circumference - (pct / 100) * circumference;
+
+  document.getElementById('progress-percent').textContent = Math.round(pct) + '%';
+
+  const stageLabels = {
+    pending: 'Initializing...',
+    scripting: '📝 Generating Script',
+    visuals: '🎨 Fetching Visuals',
+    tts: '🎤 Generating Voiceover',
+    editing: '✂️ Assembling Video',
+    music: '🎵 Adding Music',
+    done: '✅ Complete!',
+    failed: '❌ Failed',
+  };
+  document.getElementById('progress-stage').textContent = stageLabels[job.status] || job.status;
+  document.getElementById('progress-detail').textContent = job.message || '';
+
+  // Update stage dots
+  const stages = ['scripting','visuals','tts','editing','music','done'];
+  const dots = document.querySelectorAll('.stage-dot');
+  const currentIdx = stages.indexOf(job.status);
+  dots.forEach((dot, i) => {
+    dot.classList.remove('active', 'done');
+    if (i < currentIdx) dot.classList.add('done');
+    else if (i === currentIdx) dot.classList.add('active');
+  });
+}
+
+function renderScriptPreview(script) {
+  const container = document.getElementById('script-scenes');
+  const preview = document.getElementById('script-preview');
+  preview.style.display = 'block';
+  preview.dataset.loaded = '1';
+
+  let html = `<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--bg4)">
+    <strong style="font-size:1rem">${escHtml(script.title)}</strong>
+    <div style="font-size:.78rem;color:var(--text3);margin-top:4px">
+      ${script.scenes?.length || 0} scenes · ${Math.round(script.total_duration)}s · ${script.tone}
+    </div>
+  </div>`;
+
+  (script.scenes || []).forEach(s => {
+    html += `<div class="scene-block">
+      <div class="scene-head">
+        <span>Scene ${s.scene_number} · ${s.visual_type.replace('_',' ')}</span>
+        <span>${s.start_time}s — ${s.end_time}s</span>
+      </div>
+      <div class="scene-narration">${escHtml(s.narration)}</div>
+      <div class="scene-visual">🎨 ${escHtml(s.visual_description?.substring(0,80) || '')}</div>
+    </div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+// ═══ OUTPUT ═══
+async function refreshOutputs() {
+  try {
+    const r = await fetch('/api/factory/jobs');
+    const d = await r.json();
+    if (!d.success) return;
+
+    const gallery = document.getElementById('output-gallery');
+    const doneJobs = (d.jobs || []).filter(j => j.status === 'done');
+
+    if (!doneJobs.length) {
+      gallery.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <div class="empty-icon">📦</div><h3>No Videos Yet</h3>
+        <p>Generate your first video from the Generate tab</p></div>`;
+      return;
+    }
+
+    gallery.innerHTML = '';
+    doneJobs.forEach(job => {
+      const card = document.createElement('div');
+      card.className = 'output-card';
+      card.innerHTML = `
+        <video controls preload="metadata"
+               src="/api/factory/job/${job.job_id}/video"
+               poster="">
+        </video>
+        <div class="output-info">
+          <div class="output-title">${escHtml(job.script?.title || job.topic)}</div>
+          <div class="output-meta">
+            ${job.script?.scenes?.length || '?'} scenes ·
+            ${Math.round(job.script?.total_duration || 0)}s ·
+            ${job.config?.style || 'informative'}
+          </div>
+          <div class="output-actions">
+            <a href="/api/factory/job/${job.job_id}/video" download class="btn btn-primary btn-sm">
+              ⬇ Download
+            </a>
+            <button class="btn btn-outline btn-sm" onclick="deleteFactoryJob('${job.job_id}')">
+              🗑 Delete
+            </button>
+          </div>
+        </div>
+      `;
+      gallery.appendChild(card);
+    });
+  } catch(e) { console.error('Output refresh error:', e); }
+}
+
+async function deleteFactoryJob(jobId) {
+  if (!confirm('Delete this generated video?')) return;
+  try {
+    await fetch(`/api/factory/job/${jobId}`, { method: 'DELETE' });
+    refreshOutputs();
+    showToast('Video deleted', 'info');
+  } catch(e) { showToast('Delete failed', 'error'); }
+}
+
+// ═══ UTILS ═══
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function formatNum(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+function showToast(msg, type='info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + type;
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+</script>
+</body>
+</html>
