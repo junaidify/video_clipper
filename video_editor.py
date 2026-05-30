@@ -171,7 +171,12 @@ def assemble_video(scene_clips: list[dict],
 
             # 4. Text overlay
             if config.text_overlays and text_overlay:
-                escaped = text_overlay.replace("'", "\\'").replace(":", "\\:")
+                escaped = (text_overlay
+                           .replace("\\", "\\\\")
+                           .replace("'", "’")   # curly quote avoids escaping
+                           .replace(":", "\\:")
+                           .replace("%", "%%")
+                           .replace('"', '\\"'))
                 # Lower-third style text with background box
                 vf_parts.append(
                     f"drawtext=text='{escaped}':"
@@ -269,14 +274,11 @@ def _concat_with_xfade(clips: list[dict], output_path: str,
         current_label = "[0:v]"
 
         for i in range(1, len(clips)):
-            prev_dur = clips[i - 1]["duration"]
             trans_type = _map_transition(clips[i].get("transition", "fade"))
-            offset = prev_dur - td
 
-            # Accumulate offset from all previous clips
-            if i > 1:
-                for j in range(1, i):
-                    offset += clips[j]["duration"] - td
+            # Correct offset: sum of all previous clip durations minus
+            # one transition overlap per boundary
+            offset = sum(clips[j]["duration"] for j in range(i)) - td * i
 
             out_label = f"[v{i}]" if i < len(clips) - 1 else "[vout]"
 
@@ -386,7 +388,12 @@ def add_text_overlay(video_path: str, output_path: str,
     Add a text overlay to a video at a specific time range.
     Positions: 'lower_third', 'center', 'top', 'bottom'
     """
-    escaped = text.replace("'", "\\'").replace(":", "\\:")
+    escaped = (text
+               .replace("\\", "\\\\")
+               .replace("'", "'")
+               .replace(":", "\\:")
+               .replace("%", "%%")
+               .replace('"', '\\"'))
 
     pos_map = {
         "lower_third": f"x=(w-text_w)/2:y=h-h/5",

@@ -88,27 +88,31 @@ def search_pixabay_music(mood: str = "upbeat",
     }
 
     query = mood_queries.get(mood, mood)
+
+    # Pixabay has a dedicated music/audio API at /api/videos/ won't work either.
+    # The correct free music API is at https://pixabay.com/api/videos/ for video,
+    # but for audio we must use their undocumented audio search or fall back.
+    # As of 2025, Pixabay's public API does NOT support audio/music search.
+    # We'll try anyway, then fall back to local tracks.
     url = "https://pixabay.com/api/"
     params = {
         "key": api_key,
         "q": query,
-        "media_type": "music",
         "per_page": per_page,
         "safesearch": "true",
     }
 
-    # Note: Pixabay's standard API doesn't have a dedicated music endpoint.
-    # We use their audio search if available, otherwise fall back to local tracks.
     try:
         resp = requests.get(url, params=params, timeout=15)
         if resp.status_code == 200:
             data = resp.json()
             tracks = []
             for hit in data.get("hits", []):
-                if hit.get("type") == "audio" or "audio" in str(hit.get("tags", "")):
+                # The standard API returns images; check if any audio tags match
+                if hit.get("type") == "audio":
                     tracks.append(MusicTrack(
                         title=hit.get("tags", "Background Music")[:50],
-                        url=hit.get("previewURL", ""),
+                        url=hit.get("previewURL") or hit.get("webformatURL", ""),
                         duration=hit.get("duration", 60),
                         mood=mood,
                         source="pixabay",
@@ -117,6 +121,8 @@ def search_pixabay_music(mood: str = "upbeat",
             if tracks:
                 logger.info(f"Pixabay music: {len(tracks)} tracks for '{mood}'")
                 return tracks
+            else:
+                logger.info("Pixabay API returned no audio results — falling back to local")
     except Exception as e:
         logger.warning(f"Pixabay music search failed: {e}")
 
