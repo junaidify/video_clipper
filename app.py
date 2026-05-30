@@ -905,7 +905,7 @@ def list_clips_in_dir(job_id):
 @app.route('/api/clips/subtitle', methods=['POST'])
 def add_subtitles():
     """Generate and burn subtitles into a clip."""
-    data = request.get_json()
+    data = request.get_json() or {}
     job_id = data.get('job_id', '')
     filename = data.get('filename', '')
     model_size = data.get('model_size', 'base')
@@ -2061,7 +2061,7 @@ def youtube_upload():
     thread = threading.Thread(
         target=_youtube_upload_job,
         args=(upload_job_id, clip_dir, clip_files, privacy, category,
-              source_title, custom_tags, made_for_kids, clips_meta),
+              source_title, custom_tags, made_for_kids, clips_meta, job_id),
         daemon=True,
     )
     thread.start()
@@ -2069,7 +2069,8 @@ def youtube_upload():
 
 
 def _youtube_upload_job(upload_job_id, clip_dir, clip_files, privacy, category,
-                        source_title, custom_tags, made_for_kids, clips_meta):
+                        source_title, custom_tags, made_for_kids, clips_meta,
+                        job_id=""):
     """Background: upload all clips to YouTube one by one."""
     total = len(clip_files)
     results = []
@@ -2175,32 +2176,8 @@ def _youtube_upload_job(upload_job_id, clip_dir, clip_files, privacy, category,
             jobs[upload_job_id]['error'] = results[0].get('error', 'All uploads failed')
 
 
-# ═══════════════════════════════════════════════════
-#  LEGACY /api/process (kept for backward compat)
-# ═══════════════════════════════════════════════════
-
-@app.route('/api/process', methods=['POST'])
-def process_video():
-    """Legacy: Start processing from direct upload/URL (not library)."""
-    job_id = str(uuid.uuid4())[:8]
-    job_dir = os.path.join(app.config['CLIPS_FOLDER'], job_id)
-    os.makedirs(job_dir, exist_ok=True)
-
-    settings = {
-        'model_size': request.form.get('model_size', 'base'),
-        'max_clips': int(request.form.get('max_clips', 10)),
-        'min_score': float(request.form.get('min_score', 0.4)),
-        'min_duration': int(request.form.get('min_duration', 15)),
-        'max_duration': int(request.form.get('max_duration', 60)),
-        'crop_vertical': request.form.get('crop_vertical', 'true') == 'true',
-        'use_llm': request.form.get('use_llm', 'false') == 'true',
-    }
-
-    # Legacy route redirects users to the new library-based flow
-    return jsonify({
-        'error': 'This endpoint is deprecated. Use the Video Library panel to add videos, '
-                 'then use Smart Clips / Manual Split / Sequential Reels.'
-    }), 400
+# NOTE: Legacy /api/process route removed — it created orphan directories
+# and always returned 400. Use the Video Library panel workflow instead.
 
 
 # ═══════════════════════════════════════════════════

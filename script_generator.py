@@ -319,51 +319,91 @@ def _call_gemini(prompt: str, api_key: str) -> str:
     """Call Google Gemini API."""
     import google.generativeai as genai
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    # Try models in order
+    models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    last_err = None
+    for model_name in models:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            if response.text:
+                return response.text.strip()
+        except Exception as e:
+            last_err = f"{model_name}: {e}"
+            logger.warning(f"Gemini model {model_name} failed: {e}")
+    raise RuntimeError(f"All Gemini models failed. Last: {last_err}")
 
 
 def _call_nvidia(prompt: str, api_key: str) -> str:
     """Call NVIDIA NIM API (OpenAI-compatible)."""
-    resp = requests.post(
-        "https://integrate.api.nvidia.com/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "meta/llama-3.1-70b-instruct",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.8,
-            "max_tokens": 4096,
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    return data["choices"][0]["message"]["content"].strip()
+    # Try models in order: newest first, then fallbacks
+    models = [
+        "meta/llama-3.3-70b-instruct",
+        "meta/llama-3.1-70b-instruct",
+        "nvidia/llama-3.1-nemotron-70b-instruct",
+    ]
+    last_err = None
+    for model in models:
+        try:
+            resp = requests.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.8,
+                    "max_tokens": 4096,
+                },
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["choices"][0]["message"]["content"].strip()
+            last_err = f"{model}: HTTP {resp.status_code}"
+            logger.warning(f"NVIDIA model {model} failed: {resp.status_code}")
+        except Exception as e:
+            last_err = f"{model}: {e}"
+            logger.warning(f"NVIDIA model {model} error: {e}")
+    raise RuntimeError(f"All NVIDIA models failed. Last: {last_err}")
 
 
 def _call_groq(prompt: str, api_key: str) -> str:
     """Call Groq API (OpenAI-compatible)."""
-    resp = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "llama-3.1-70b-versatile",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.8,
-            "max_tokens": 4096,
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    return data["choices"][0]["message"]["content"].strip()
+    # llama-3.1-70b-versatile was deprecated; try current models
+    models = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768",
+    ]
+    last_err = None
+    for model in models:
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.8,
+                    "max_tokens": 4096,
+                },
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["choices"][0]["message"]["content"].strip()
+            last_err = f"{model}: HTTP {resp.status_code}"
+            logger.warning(f"Groq model {model} failed: {resp.status_code}")
+        except Exception as e:
+            last_err = f"{model}: {e}"
+            logger.warning(f"Groq model {model} error: {e}")
+    raise RuntimeError(f"All Groq models failed. Last: {last_err}")
 
 
 def regenerate_scene(script: Script, scene_number: int,

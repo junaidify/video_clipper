@@ -3,424 +3,713 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Content Factory — AI Video Generator</title>
+<title>CLIPPER — Content Factory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-/* ═══ RESET & BASE ═══ */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a28;--bg4:#222236;
-  --text:#e8e8f0;--text2:#9898b0;--text3:#6868a0;
-  --accent:#7c3aed;--accent2:#a855f7;--accent-glow:rgba(124,58,237,.25);
-  --green:#10b981;--green-glow:rgba(16,185,129,.2);
-  --amber:#f59e0b;--amber-glow:rgba(245,158,11,.2);
-  --red:#ef4444;--blue:#3b82f6;--cyan:#06b6d4;
-  --radius:12px;--radius-sm:8px;
-  --shadow:0 4px 24px rgba(0,0,0,.4);
-  --font:'Inter',system-ui,-apple-system,sans-serif;
-}
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-html{font-size:15px}
-body{font-family:var(--font);background:var(--bg);color:var(--text);
-     min-height:100vh;overflow-x:hidden;line-height:1.6}
-
-/* ═══ LAYOUT ═══ */
-.factory-container{max-width:1400px;margin:0 auto;padding:20px 28px}
-
-/* ═══ HEADER ═══ */
-.factory-header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:24px 0 32px;border-bottom:1px solid var(--bg4);margin-bottom:32px;
-}
-.factory-logo{display:flex;align-items:center;gap:14px}
-.factory-logo-icon{
-  width:48px;height:48px;border-radius:14px;
-  background:linear-gradient(135deg,var(--accent),var(--cyan));
-  display:flex;align-items:center;justify-content:center;font-size:24px;
-  box-shadow:0 0 20px var(--accent-glow);
-}
-.factory-logo h1{font-size:1.6rem;font-weight:700;
-  background:linear-gradient(135deg,#fff,var(--accent2));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-}
-.factory-logo p{font-size:.82rem;color:var(--text3);margin-top:2px}
-.back-link{
-  color:var(--text3);text-decoration:none;font-size:.85rem;
-  padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--bg4);
-  transition:.2s;
-}
-.back-link:hover{color:var(--text);border-color:var(--accent);background:var(--bg3)}
-
-/* ═══ SECTION TABS ═══ */
-.factory-tabs{
-  display:flex;gap:4px;background:var(--bg2);border-radius:var(--radius);
-  padding:4px;margin-bottom:28px;width:fit-content;
-}
-.factory-tab{
-  padding:10px 24px;border-radius:var(--radius-sm);cursor:pointer;
-  font-size:.88rem;font-weight:500;color:var(--text3);transition:.2s;
-  border:none;background:transparent;
-}
-.factory-tab:hover{color:var(--text);background:var(--bg3)}
-.factory-tab.active{color:#fff;background:var(--accent);
-  box-shadow:0 2px 12px var(--accent-glow)}
-
-/* ═══ PANELS ═══ */
-.factory-panel{display:none}
-.factory-panel.active{display:block}
-
-/* ═══ TRENDING PANEL ═══ */
-.trending-controls{
-  display:flex;gap:12px;align-items:center;margin-bottom:24px;flex-wrap:wrap;
-}
-.trending-controls select,.trending-controls input{
-  background:var(--bg3);border:1px solid var(--bg4);color:var(--text);
-  padding:10px 14px;border-radius:var(--radius-sm);font-size:.88rem;
-  font-family:var(--font);
-}
-.trending-controls select:focus,.trending-controls input:focus{
-  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)
+/* ═══ DESIGN SYSTEM — matches app.html exactly ═══ */
+:root {
+  --bg: #111111;
+  --bg-card: #1a1a1a;
+  --bg-elevated: #222222;
+  --bg-input: #161616;
+  --lime: #CAFF00;
+  --lime-dim: #a8d600;
+  --lime-glow: rgba(202,255,0,0.12);
+  --lime-glow-strong: rgba(202,255,0,0.25);
+  --lime-subtle: rgba(202,255,0,0.06);
+  --accent: #818cf8;
+  --accent-dim: #6366f1;
+  --accent-glow: rgba(129,140,248,0.15);
+  --text-primary: #e8e8e8;
+  --border: #2a2a2a;
+  --border-hover: #3a3a3a;
+  --border-active: #4a4a4a;
+  --blue: #60a5fa;
+  --blue-glass: rgba(96,165,250,0.10);
+  --green: #34d399;
+  --green-glass: rgba(52,211,153,0.10);
+  --yellow: #fbbf24;
+  --yellow-glass: rgba(251,191,36,0.10);
+  --purple: #a78bfa;
+  --purple-glass: rgba(167,139,250,0.10);
+  --red: #f87171;
+  --red-glass: rgba(248,113,113,0.10);
+  --white: #ffffff;
+  --text: #e8e8e8;
+  --text-secondary: #999999;
+  --text-dim: #666666;
+  --text-ghost: #444444;
+  --display: 'Bebas Neue', sans-serif;
+  --sans: 'Inter', -apple-system, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --radius: 16px;
+  --radius-sm: 12px;
+  --radius-xs: 8px;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.btn{
-  padding:10px 22px;border:none;border-radius:var(--radius-sm);
-  font-size:.88rem;font-weight:600;cursor:pointer;transition:.2s;
-  font-family:var(--font);display:inline-flex;align-items:center;gap:8px;
-}
-.btn-primary{background:var(--accent);color:#fff;box-shadow:0 2px 12px var(--accent-glow)}
-.btn-primary:hover{background:var(--accent2);transform:translateY(-1px)}
-.btn-green{background:var(--green);color:#fff;box-shadow:0 2px 12px var(--green-glow)}
-.btn-green:hover{opacity:.9;transform:translateY(-1px)}
-.btn-outline{background:transparent;color:var(--text2);border:1px solid var(--bg4)}
-.btn-outline:hover{border-color:var(--accent);color:var(--text)}
-.btn-sm{padding:7px 14px;font-size:.82rem}
-.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+a { color: inherit; text-decoration: none; }
 
-/* ═══ TRENDING GRID ═══ */
-.trending-grid{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
-  gap:16px;
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
-.trend-card{
-  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
-  padding:20px;transition:.25s;cursor:pointer;position:relative;overflow:hidden;
-}
-.trend-card:hover{border-color:var(--accent);transform:translateY(-2px);
-  box-shadow:0 8px 32px rgba(0,0,0,.3)}
-.trend-card .source-badge{
-  position:absolute;top:12px;right:12px;font-size:.7rem;font-weight:600;
-  padding:3px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px;
-}
-.source-badge.youtube{background:rgba(255,0,0,.15);color:#ff4444}
-.source-badge.google_trends{background:rgba(66,133,244,.15);color:#4285f4}
-.source-badge.reddit{background:rgba(255,87,34,.15);color:#ff5722}
-.trend-card h3{font-size:1rem;font-weight:600;margin-bottom:8px;
-  padding-right:80px;line-height:1.4}
-.trend-card .trend-meta{display:flex;gap:16px;font-size:.78rem;color:var(--text3);margin-bottom:10px}
-.trend-card .trend-score{
-  display:flex;align-items:center;gap:6px;
-}
-.score-bar{width:60px;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
-.score-fill{height:100%;border-radius:3px;transition:.3s}
-.trend-card .trend-keywords{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
-.trend-card .trend-keywords span{
-  font-size:.72rem;padding:3px 8px;border-radius:4px;
-  background:var(--bg4);color:var(--text3);
-}
-.trend-card .use-btn{
-  margin-top:14px;width:100%;padding:10px;border:none;border-radius:var(--radius-sm);
-  background:linear-gradient(135deg,var(--accent),var(--accent2));
-  color:#fff;font-weight:600;font-size:.85rem;cursor:pointer;transition:.2s;
-  font-family:var(--font);
-}
-.trend-card .use-btn:hover{opacity:.9;transform:translateY(-1px)}
 
-/* ═══ GENERATE PANEL ═══ */
-.generate-layout{display:grid;grid-template-columns:1fr 1fr;gap:28px}
-@media(max-width:900px){.generate-layout{grid-template-columns:1fr}}
-
-.config-section{
-  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
-  padding:24px;
+/* ═══ Noise Texture ═══ */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat; background-size: 256px;
+  pointer-events: none; z-index: 9999;
 }
-.config-section h2{font-size:1.1rem;font-weight:600;margin-bottom:18px;
-  display:flex;align-items:center;gap:10px}
-.config-section h2 span{font-size:1.2rem}
 
-.form-group{margin-bottom:18px}
-.form-group label{display:block;font-size:.82rem;font-weight:500;
-  color:var(--text2);margin-bottom:6px}
-.form-group input,.form-group select,.form-group textarea{
-  width:100%;background:var(--bg3);border:1px solid var(--bg4);color:var(--text);
-  padding:10px 14px;border-radius:var(--radius-sm);font-size:.88rem;
-  font-family:var(--font);transition:.2s;
+/* ═══ Atmospheric glow ═══ */
+.atmosphere {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
 }
-.form-group input:focus,.form-group select:focus,.form-group textarea:focus{
-  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)
+.atmosphere::before {
+  content: ''; position: absolute;
+  width: 1000px; height: 1000px; top: -350px; left: -250px;
+  background: radial-gradient(circle, rgba(202,255,0,0.04) 0%, transparent 70%);
+  animation: drift1 25s ease-in-out infinite;
 }
-.form-group textarea{resize:vertical;min-height:80px}
-
-.style-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
-.style-card{
-  padding:12px;border-radius:var(--radius-sm);border:2px solid var(--bg4);
-  cursor:pointer;text-align:center;transition:.2s;background:var(--bg3);
+.atmosphere::after {
+  content: ''; position: absolute;
+  width: 800px; height: 800px; bottom: -250px; right: -200px;
+  background: radial-gradient(circle, rgba(202,255,0,0.03) 0%, transparent 70%);
+  animation: drift2 30s ease-in-out infinite;
 }
-.style-card:hover{border-color:var(--text3)}
-.style-card.selected{border-color:var(--accent);background:rgba(124,58,237,.1)}
-.style-card .style-icon{font-size:1.4rem;margin-bottom:4px}
-.style-card .style-name{font-size:.82rem;font-weight:600}
-.style-card .style-desc{font-size:.7rem;color:var(--text3);margin-top:2px}
+@keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(60px, 40px); } }
+@keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-40px, -30px); } }
 
-.range-group{display:flex;align-items:center;gap:12px}
-.range-group input[type="range"]{flex:1;accent-color:var(--accent)}
-.range-group .range-val{font-size:.85rem;font-weight:600;color:var(--accent);min-width:40px;text-align:right}
+/* ═══ Container ═══ */
+.container { max-width: 1100px; margin: 0 auto; padding: 0 40px; }
 
-/* ═══ PREVIEW PANEL ═══ */
-.script-preview{
-  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
-  padding:24px;max-height:600px;overflow-y:auto;
+/* ═══ Floating Pill Navbar ═══ */
+.navbar {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 1000; width: auto; max-width: 780px;
 }
-.script-preview h2{font-size:1.1rem;font-weight:600;margin-bottom:16px}
-.scene-block{
-  padding:14px;margin-bottom:10px;border-radius:var(--radius-sm);
-  background:var(--bg3);border-left:3px solid var(--accent);
+.nav-pill {
+  display: flex; align-items: center; gap: 0;
+  background: #1a1a1a; border-radius: 60px;
+  padding: 6px 6px 6px 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+  position: relative; overflow: hidden;
 }
-.scene-block .scene-head{display:flex;justify-content:space-between;
-  font-size:.78rem;color:var(--text3);margin-bottom:6px}
-.scene-block .scene-narration{font-size:.9rem;line-height:1.5}
-.scene-block .scene-visual{
-  margin-top:8px;font-size:.78rem;color:var(--cyan);
-  display:flex;align-items:center;gap:6px}
-
-/* ═══ PROGRESS PANEL ═══ */
-.progress-container{
-  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
-  padding:32px;text-align:center;
+.nav-pill::before {
+  content: ''; position: absolute; inset: 0; border-radius: 60px;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat; background-size: 128px;
+  pointer-events: none; z-index: 0;
 }
-.progress-ring{
-  width:160px;height:160px;margin:0 auto 20px;position:relative;
+.nav-pill::after {
+  content: ''; position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  pointer-events: none; z-index: 0;
 }
-.progress-ring svg{transform:rotate(-90deg)}
-.progress-ring circle{fill:none;stroke-width:8}
-.progress-ring .bg{stroke:var(--bg4)}
-.progress-ring .fg{stroke:var(--accent);stroke-linecap:round;
-  transition:stroke-dashoffset .5s ease}
-.progress-percent{
-  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  font-size:2rem;font-weight:700;
+.nav-logo {
+  width: 38px; height: 38px; background: var(--lime); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-right: 6px; position: relative; z-index: 1;
+  transition: transform 0.3s var(--ease);
 }
-.progress-stage{font-size:1rem;font-weight:500;margin-bottom:6px}
-.progress-detail{font-size:.85rem;color:var(--text3)}
-
-.stage-dots{display:flex;justify-content:center;gap:8px;margin-top:24px}
-.stage-dot{width:10px;height:10px;border-radius:50%;background:var(--bg4);transition:.3s}
-.stage-dot.active{background:var(--accent);box-shadow:0 0 8px var(--accent-glow)}
-.stage-dot.done{background:var(--green)}
-
-/* ═══ OUTPUT PANEL ═══ */
-.output-gallery{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;
+.nav-logo:hover { transform: scale(1.05); }
+.nav-logo svg { width: 18px; height: 18px; fill: #111; }
+.nav-brand {
+  font-family: var(--display); font-size: 1.25rem; color: var(--white);
+  letter-spacing: 0.06em; margin-right: 8px; position: relative; z-index: 1;
 }
-.output-card{
-  background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius);
-  overflow:hidden;transition:.25s;
+.nav-tag {
+  font-size: 0.52rem; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--lime);
+  padding: 2px 8px; border: 1px solid rgba(202,255,0,0.25);
+  border-radius: 20px; background: var(--lime-subtle);
+  position: relative; z-index: 1;
 }
-.output-card:hover{border-color:var(--accent);box-shadow:var(--shadow)}
-.output-card video{width:100%;aspect-ratio:9/16;object-fit:cover;background:#000}
-.output-card .output-info{padding:16px}
-.output-card .output-title{font-size:.95rem;font-weight:600;margin-bottom:6px}
-.output-card .output-meta{font-size:.78rem;color:var(--text3);margin-bottom:12px}
-.output-card .output-actions{display:flex;gap:8px}
+.nav-spacer { flex: 1; }
+.nav-home {
+  display: block; padding: 10px 24px; background: var(--white);
+  color: #111; font-size: 0.78rem; font-weight: 600; border-radius: 50px;
+  text-decoration: none; letter-spacing: 0.02em;
+  transition: all 0.3s var(--ease); white-space: nowrap;
+  position: relative; z-index: 1;
+}
+.nav-home:hover {
+  background: var(--lime); box-shadow: 0 4px 20px var(--lime-glow); transform: scale(1.03);
+}
 
-/* ═══ EMPTY STATE ═══ */
-.empty-state{text-align:center;padding:80px 20px;color:var(--text3)}
-.empty-state .empty-icon{font-size:3rem;margin-bottom:16px;opacity:.5}
-.empty-state h3{font-size:1.1rem;font-weight:500;margin-bottom:8px;color:var(--text2)}
-.empty-state p{font-size:.88rem}
+/* ═══ Tab Nav ═══ */
+.tab-nav-wrap {
+  position: sticky; top: 0; z-index: 100; padding: 90px 0 0; background: var(--bg);
+}
+.tab-nav-wrap::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+  height: 1px; background: var(--border);
+}
+.tab-nav {
+  display: flex; gap: 0; max-width: 1100px; margin: 0 auto;
+  padding: 0 40px; overflow-x: auto; scrollbar-width: none;
+}
+.tab-nav::-webkit-scrollbar { display: none; }
+.tab-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 16px 24px; cursor: pointer; color: var(--text-dim);
+  font-size: 0.88rem; font-weight: 500; transition: all 0.3s var(--ease);
+  border-bottom: 2px solid transparent; white-space: nowrap;
+  position: relative; letter-spacing: 0.01em;
+}
+.tab-item:hover { color: var(--text-secondary); }
+.tab-item.active { color: var(--lime); border-bottom-color: var(--lime); }
+.tab-sep {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: var(--text-ghost); align-self: center; flex-shrink: 0;
+}
 
-/* ═══ LOADING SPINNER ═══ */
-.spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.2);
-  border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* ═══ Main Content ═══ */
+.main-content { position: relative; z-index: 1; padding: 56px 0 120px; }
 
-/* ═══ SCROLLBAR ═══ */
-::-webkit-scrollbar{width:6px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+/* ═══ Panel Transitions ═══ */
+.panel { display: none; }
+.panel.active { display: block; animation: panelIn 0.55s var(--ease-out); }
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(20px); filter: blur(8px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
 
-/* ═══ TOAST ═══ */
-.toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
-.toast{padding:12px 20px;border-radius:var(--radius-sm);font-size:.85rem;
-  color:#fff;animation:slideIn .3s ease;box-shadow:var(--shadow)}
-.toast.success{background:var(--green)}
-.toast.error{background:var(--red)}
-.toast.info{background:var(--blue)}
-@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+/* ═══ Panel Hero ═══ */
+.panel-hero { text-align: center; margin-bottom: 56px; position: relative; }
+.panel-hero::after {
+  content: ''; display: block; width: 60px; height: 3px;
+  background: var(--lime); margin: 28px auto 0; border-radius: 2px; opacity: 0.5;
+}
+.panel-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 16px; background: var(--lime-subtle);
+  border: 1px solid rgba(202,255,0,0.15); border-radius: 20px;
+  font-size: 0.7rem; font-weight: 600; color: var(--lime);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 20px;
+}
+.panel-title {
+  font-family: var(--display); font-size: clamp(3rem, 5.5vw, 4.5rem);
+  letter-spacing: 0.03em; color: var(--white); line-height: 1; margin-bottom: 14px;
+}
+.panel-desc {
+  color: var(--text-secondary); font-size: 0.95rem; line-height: 1.7;
+  font-weight: 400; max-width: 560px; margin: 0 auto;
+}
+
+/* ═══ Card ═══ */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 32px; margin-bottom: 24px;
+  transition: border-color 0.4s var(--ease), box-shadow 0.4s var(--ease), transform 0.4s var(--ease);
+  position: relative; overflow: hidden;
+}
+.card::before {
+  content: ''; position: absolute; inset: 0; opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat; background-size: 128px;
+  pointer-events: none; border-radius: var(--radius);
+}
+.card::after {
+  content: ''; position: absolute; inset: -1px; border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(202,255,0,0.1), transparent 40%, transparent 60%, rgba(202,255,0,0.06));
+  opacity: 0; transition: opacity 0.4s var(--ease); pointer-events: none; z-index: 0;
+}
+.card:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.3), 0 0 0 1px rgba(202,255,0,0.04);
+  transform: translateY(-2px);
+}
+.card:hover::after { opacity: 1; }
+.card-header {
+  font-family: var(--display); font-size: 1.4rem; letter-spacing: 0.07em;
+  margin-bottom: 22px; color: var(--white); position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 12px;
+}
+.card-header .card-icon {
+  width: 36px; height: 36px; background: var(--lime-subtle);
+  border: 1px solid rgba(202,255,0,0.12); border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+
+/* ═══ Form Elements ═══ */
+.form-row { display: flex; gap: 16px; margin-bottom: 18px; align-items: end; position: relative; z-index: 1; }
+.form-group { flex: 1; position: relative; z-index: 1; margin-bottom: 18px; }
+.form-group label {
+  display: block; font-family: var(--display); font-size: 0.82rem;
+  color: var(--text-dim); margin-bottom: 9px; letter-spacing: 0.1em;
+}
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 13px 16px; border-radius: var(--radius-xs);
+  border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text); font-size: 0.9rem; font-family: var(--sans);
+  outline: none; transition: all 0.3s var(--ease);
+}
+.form-group input:hover, .form-group select:hover { border-color: var(--border-hover); }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  border-color: rgba(202,255,0,0.40);
+  box-shadow: 0 0 0 3px rgba(202,255,0,0.06), 0 0 24px rgba(202,255,0,0.04);
+  background: #1a1a1a;
+}
+.form-group input::placeholder { color: var(--text-ghost); font-weight: 400; }
+.form-group select option { background: #1a1a1a; color: var(--text); }
+.form-group textarea { resize: vertical; min-height: 80px; }
+
+/* ═══ Buttons ═══ */
+.btn {
+  padding: 13px 28px; border: none; border-radius: var(--radius-xs);
+  cursor: pointer; font-size: 0.9rem; font-weight: 600;
+  font-family: var(--sans); transition: all 0.3s var(--ease);
+  letter-spacing: 0.02em; position: relative; z-index: 1;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-primary {
+  background: var(--lime); color: #111; box-shadow: 0 4px 16px var(--lime-glow);
+}
+.btn-primary:hover {
+  background: var(--lime-dim); transform: translateY(-2px);
+  box-shadow: 0 8px 30px var(--lime-glow-strong);
+}
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-secondary {
+  background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary);
+}
+.btn-secondary:hover { border-color: var(--border-hover); color: var(--white); background: #2a2a2a; }
+.btn-sm { padding: 10px 20px; font-size: 0.84rem; }
+.btn-full {
+  width: 100%; padding: 15px 28px; font-size: 1rem;
+  border-radius: var(--radius-sm); letter-spacing: 0.06em;
+  font-weight: 700; text-transform: uppercase; font-family: var(--display);
+}
+.btn-full:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+
+/* ═══ Trending Grid ═══ */
+.card-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px; position: relative; z-index: 1;
+}
+
+.trend-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px;
+  transition: all 0.35s var(--ease); cursor: pointer;
+  position: relative; overflow: hidden;
+}
+.trend-card::before {
+  content: ''; position: absolute; inset: 0; opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat; background-size: 128px; pointer-events: none;
+}
+.trend-card:hover {
+  border-color: var(--border-hover); transform: translateY(-3px);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.3), 0 0 0 1px rgba(202,255,0,0.04);
+}
+.trend-card .source-badge {
+  position: absolute; top: 14px; right: 14px;
+  font-size: 0.62rem; font-weight: 700; padding: 3px 10px;
+  border-radius: 20px; text-transform: uppercase; letter-spacing: 0.06em;
+  font-family: var(--mono);
+}
+.source-badge.youtube { background: var(--red-glass); color: var(--red); }
+.source-badge.google_trends { background: var(--blue-glass); color: var(--blue); }
+.source-badge.reddit { background: rgba(255,87,34,0.12); color: #ff7043; }
+.trend-card h3 {
+  font-family: var(--display); font-size: 1.15rem; letter-spacing: 0.04em;
+  margin-bottom: 10px; padding-right: 80px; line-height: 1.3; color: var(--white);
+}
+.trend-card .trend-meta {
+  display: flex; gap: 16px; font-size: 0.78rem; color: var(--text-dim); margin-bottom: 10px;
+}
+.trend-card .trend-score { display: flex; align-items: center; gap: 6px; }
+.score-bar {
+  width: 60px; height: 5px; background: var(--bg-elevated);
+  border-radius: 3px; overflow: hidden;
+}
+.score-fill { height: 100%; border-radius: 3px; transition: .3s; }
+.trend-card .trend-keywords { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.trend-card .trend-keywords span {
+  font-size: 0.68rem; padding: 3px 8px; border-radius: 4px;
+  background: var(--bg-elevated); color: var(--text-dim);
+  font-family: var(--mono); border: 1px solid var(--border);
+}
+.trend-card .use-btn {
+  margin-top: 16px; width: 100%; padding: 11px; border: none;
+  border-radius: var(--radius-xs); background: var(--lime); color: #111;
+  font-weight: 700; font-size: 0.82rem; cursor: pointer;
+  font-family: var(--display); letter-spacing: 0.08em; text-transform: uppercase;
+  transition: all 0.3s var(--ease); box-shadow: 0 2px 12px var(--lime-glow);
+}
+.trend-card .use-btn:hover {
+  background: var(--lime-dim); transform: translateY(-1px);
+  box-shadow: 0 4px 20px var(--lime-glow-strong);
+}
+
+/* ═══ Two Column Layout ═══ */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media(max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+/* ═══ Style Grid ═══ */
+.style-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px;
+}
+.style-card {
+  padding: 14px 10px; border-radius: var(--radius-xs);
+  border: 2px solid var(--border); cursor: pointer; text-align: center;
+  transition: all 0.25s var(--ease); background: var(--bg-input);
+}
+.style-card:hover { border-color: var(--border-hover); }
+.style-card.selected {
+  border-color: var(--lime); background: var(--lime-subtle);
+  box-shadow: 0 0 0 2px var(--lime-glow);
+}
+.style-card .style-icon { font-size: 1.4rem; margin-bottom: 4px; }
+.style-card .style-name {
+  font-size: 0.78rem; font-weight: 600; color: var(--text); letter-spacing: 0.02em;
+}
+.style-card .style-desc { font-size: 0.66rem; color: var(--text-dim); margin-top: 2px; }
+
+/* ═══ Range Input ═══ */
+.range-group { display: flex; align-items: center; gap: 12px; }
+.range-group input[type="range"] { flex: 1; accent-color: var(--lime); }
+.range-group .range-val {
+  font-size: 0.88rem; font-weight: 700; color: var(--lime);
+  min-width: 40px; text-align: right; font-family: var(--mono);
+}
+
+/* ═══ Script Preview ═══ */
+.script-preview { max-height: 600px; overflow-y: auto; }
+.scene-block {
+  padding: 16px; margin-bottom: 10px; border-radius: var(--radius-xs);
+  background: var(--bg-input); border-left: 3px solid var(--lime);
+  position: relative; z-index: 1;
+}
+.scene-block .scene-head {
+  display: flex; justify-content: space-between;
+  font-size: 0.74rem; color: var(--text-dim); margin-bottom: 6px;
+  font-family: var(--mono);
+}
+.scene-block .scene-narration { font-size: 0.9rem; line-height: 1.6; color: var(--text); }
+.scene-block .scene-visual {
+  margin-top: 8px; font-size: 0.76rem; color: var(--blue);
+  display: flex; align-items: center; gap: 6px;
+}
+
+/* ═══ Progress ═══ */
+.progress-container { text-align: center; position: relative; z-index: 1; }
+.progress-ring { width: 160px; height: 160px; margin: 0 auto 20px; position: relative; }
+.progress-ring svg { transform: rotate(-90deg); }
+.progress-ring circle { fill: none; stroke-width: 8; }
+.progress-ring .bg { stroke: var(--border); }
+.progress-ring .fg { stroke: var(--lime); stroke-linecap: round; transition: stroke-dashoffset .5s ease; }
+.progress-percent {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 2rem; font-weight: 700; font-family: var(--display);
+  letter-spacing: 0.04em; color: var(--white);
+}
+.progress-stage { font-size: 1rem; font-weight: 500; margin-bottom: 6px; color: var(--text); }
+.progress-detail { font-size: 0.85rem; color: var(--text-dim); }
+
+.stage-dots { display: flex; justify-content: center; gap: 8px; margin-top: 24px; }
+.stage-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg-elevated); border: 1px solid var(--border); transition: .3s;
+}
+.stage-dot.active { background: var(--lime); border-color: var(--lime); box-shadow: 0 0 8px var(--lime-glow); }
+.stage-dot.done { background: var(--green); border-color: var(--green); }
+
+/* ═══ Output Gallery ═══ */
+.output-gallery {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;
+}
+.output-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  transition: all 0.35s var(--ease);
+}
+.output-card:hover {
+  border-color: var(--border-hover); transform: translateY(-2px);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+}
+.output-card video {
+  width: 100%; aspect-ratio: 9/16; object-fit: cover; background: #000;
+}
+.output-card .output-info { padding: 18px; }
+.output-card .output-title {
+  font-family: var(--display); font-size: 1.05rem; letter-spacing: 0.04em;
+  margin-bottom: 6px; color: var(--white);
+}
+.output-card .output-meta {
+  font-size: 0.76rem; color: var(--text-dim); margin-bottom: 14px;
+  font-family: var(--mono);
+}
+.output-card .output-actions { display: flex; gap: 8px; }
+
+/* ═══ Empty State ═══ */
+.empty-state {
+  text-align: center; padding: 80px 20px; color: var(--text-dim);
+}
+.empty-state .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.4; }
+.empty-state h3 {
+  font-family: var(--display); font-size: 1.3rem; letter-spacing: 0.06em;
+  margin-bottom: 8px; color: var(--text-secondary);
+}
+.empty-state p { font-size: 0.88rem; }
+
+/* ═══ Spinner ═══ */
+.spinner {
+  display: inline-block; width: 18px; height: 18px;
+  border: 2px solid rgba(0,0,0,0.15); border-top-color: #111;
+  border-radius: 50%; animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ═══ Toast ═══ */
+.toast-container {
+  position: fixed; top: 20px; right: 20px; z-index: 9999;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  padding: 14px 22px; border-radius: var(--radius-xs); font-size: 0.85rem;
+  color: #111; animation: slideIn .35s var(--ease-out);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3); font-weight: 600;
+}
+.toast.success { background: var(--green); color: #111; }
+.toast.error { background: var(--red); color: #fff; }
+.toast.info { background: var(--lime); color: #111; }
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* ═══ Scrollbar ═══ */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-ghost); }
 </style>
 </head>
 <body>
 
-<div class="factory-container">
-  <!-- HEADER -->
-  <header class="factory-header">
-    <div class="factory-logo">
-      <div class="factory-logo-icon">⚡</div>
-      <div>
-        <h1>Content Factory</h1>
-        <p>AI-Powered Video Generation from Trending Topics</p>
-      </div>
-    </div>
-    <a href="/" class="back-link">← Back to Clipper</a>
-  </header>
+<div class="atmosphere"></div>
 
-  <!-- TABS -->
-  <div class="factory-tabs">
-    <button class="factory-tab active" onclick="switchTab('trending')">🔥 Trending</button>
-    <button class="factory-tab" onclick="switchTab('generate')">🎬 Generate</button>
-    <button class="factory-tab" onclick="switchTab('output')">📦 Output</button>
+<!-- ═══ NAVBAR — same structure as clipper ═══ -->
+<nav class="navbar">
+  <div class="nav-pill">
+    <a href="/" class="nav-logo">
+      <svg viewBox="0 0 24 24"><path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/></svg>
+    </a>
+    <a href="/" class="nav-brand">CLIPPER</a>
+    <span class="nav-tag">FACTORY</span>
+    <div class="nav-spacer"></div>
+    <a href="/" class="nav-home">Back to Clipper</a>
   </div>
+</nav>
 
-  <!-- ═══ TRENDING PANEL ═══ -->
-  <div id="panel-trending" class="factory-panel active">
-    <div class="trending-controls">
-      <select id="trend-region" onchange="fetchTrending()">
-        <option value="US">🇺🇸 United States</option>
-        <option value="GB">🇬🇧 United Kingdom</option>
-        <option value="IN">🇮🇳 India</option>
-        <option value="CA">🇨🇦 Canada</option>
-        <option value="AU">🇦🇺 Australia</option>
-        <option value="DE">🇩🇪 Germany</option>
-      </select>
-      <button class="btn btn-primary" onclick="fetchTrending()" id="btn-fetch-trends">
-        🔍 Scan Trends
-      </button>
-      <span id="trend-count" style="font-size:.82rem;color:var(--text3)"></span>
+<!-- ═══ TAB NAV ═══ -->
+<div class="tab-nav-wrap">
+  <div class="tab-nav">
+    <div class="tab-item active" onclick="switchTab('trending', this)">
+      <span>🔥</span> Trending
     </div>
-
-    <div id="trending-grid" class="trending-grid">
-      <div class="empty-state" style="grid-column:1/-1">
-        <div class="empty-icon">🔥</div>
-        <h3>Discover What's Trending</h3>
-        <p>Click "Scan Trends" to pull the latest from YouTube, Google Trends, and Reddit</p>
-      </div>
+    <div class="tab-sep"></div>
+    <div class="tab-item" onclick="switchTab('generate', this)">
+      <span>🎬</span> Generate
+    </div>
+    <div class="tab-sep"></div>
+    <div class="tab-item" onclick="switchTab('output', this)">
+      <span>📦</span> Output
     </div>
   </div>
+</div>
 
-  <!-- ═══ GENERATE PANEL ═══ -->
-  <div id="panel-generate" class="factory-panel">
-    <div class="generate-layout">
-      <!-- LEFT: Config -->
-      <div>
-        <div class="config-section" style="margin-bottom:20px">
-          <h2><span>📝</span> Topic & Script</h2>
-          <div class="form-group">
-            <label>Topic</label>
-            <input type="text" id="gen-topic" placeholder="Enter a trending topic or custom idea...">
-          </div>
-          <div class="form-group">
-            <label>Additional Context (optional)</label>
-            <textarea id="gen-description" placeholder="Any angle, facts, or direction for the script..."></textarea>
-          </div>
-          <div class="form-group">
-            <label>Script Style</label>
-            <div class="style-grid" id="style-grid"></div>
-          </div>
-          <div class="form-group">
-            <label>Duration</label>
-            <div class="range-group">
-              <input type="range" id="gen-duration" min="15" max="60" value="45" step="5"
-                     oninput="document.getElementById('dur-val').textContent=this.value+'s'">
-              <span class="range-val" id="dur-val">45s</span>
-            </div>
-          </div>
-        </div>
+<!-- ═══ MAIN ═══ -->
+<div class="main-content">
+  <div class="container">
 
-        <div class="config-section" style="margin-bottom:20px">
-          <h2><span>🎵</span> Audio & Music</h2>
-          <div class="form-group">
-            <label>Background Music Mood</label>
-            <select id="gen-music-mood"></select>
-          </div>
-          <div class="form-group">
-            <label>Music Volume</label>
-            <div class="range-group">
-              <input type="range" id="gen-music-vol" min="0" max="40" value="15" step="1"
-                     oninput="document.getElementById('mvol-val').textContent=this.value+'%'">
-              <span class="range-val" id="mvol-val">15%</span>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Tone</label>
-            <select id="gen-tone">
-              <option value="energetic">Energetic</option>
-              <option value="dramatic">Dramatic</option>
-              <option value="calm">Calm</option>
-              <option value="humorous">Humorous</option>
-              <option value="suspenseful">Suspenseful</option>
+    <!-- ═══ TRENDING PANEL ═══ -->
+    <div id="panel-trending" class="panel active">
+      <div class="panel-hero">
+        <div class="panel-badge">📡 LIVE INTELLIGENCE</div>
+        <h1 class="panel-title">TRENDING NOW</h1>
+        <p class="panel-desc">Discover viral topics from YouTube, Google Trends, and Reddit. Pick one to generate an original Short.</p>
+      </div>
+
+      <div class="card">
+        <div class="form-row" style="margin-bottom:0">
+          <div class="form-group" style="max-width:220px;margin-bottom:0">
+            <select id="trend-region">
+              <option value="US">🇺🇸 United States</option>
+              <option value="GB">🇬🇧 United Kingdom</option>
+              <option value="IN">🇮🇳 India</option>
+              <option value="CA">🇨🇦 Canada</option>
+              <option value="AU">🇦🇺 Australia</option>
+              <option value="DE">🇩🇪 Germany</option>
+              <option value="FR">🇫🇷 France</option>
+              <option value="JP">🇯🇵 Japan</option>
+              <option value="BR">🇧🇷 Brazil</option>
             </select>
           </div>
+          <button class="btn btn-primary" onclick="fetchTrending()" id="btn-fetch-trends">
+            🔍 Scan Trends
+          </button>
+          <span id="trend-count" style="font-size:.82rem;color:var(--text-dim);align-self:center"></span>
         </div>
-
-        <button class="btn btn-green" onclick="startGeneration()" id="btn-generate"
-                style="width:100%;padding:14px;font-size:1rem">
-          ⚡ Generate Video
-        </button>
       </div>
 
-      <!-- RIGHT: Preview / Progress -->
-      <div>
-        <!-- Script Preview (shown after script is generated) -->
-        <div id="script-preview" class="script-preview" style="display:none">
-          <h2>📋 Script Preview</h2>
-          <div id="script-scenes"></div>
+      <div id="trending-grid" class="card-grid">
+        <div class="empty-state" style="grid-column:1/-1">
+          <div class="empty-icon">🔥</div>
+          <h3>DISCOVER WHAT'S TRENDING</h3>
+          <p>Click "Scan Trends" to pull the latest from YouTube, Google Trends, and Reddit</p>
         </div>
+      </div>
+    </div>
 
-        <!-- Progress (shown during generation) -->
-        <div id="generation-progress" class="progress-container" style="display:none">
-          <div class="progress-ring">
-            <svg width="160" height="160">
-              <circle class="bg" cx="80" cy="80" r="70"/>
-              <circle class="fg" id="progress-circle" cx="80" cy="80" r="70"
-                      stroke-dasharray="440" stroke-dashoffset="440"/>
-            </svg>
-            <div class="progress-percent" id="progress-percent">0%</div>
+    <!-- ═══ GENERATE PANEL ═══ -->
+    <div id="panel-generate" class="panel">
+      <div class="panel-hero">
+        <div class="panel-badge">⚡ AI PIPELINE</div>
+        <h1 class="panel-title">GENERATE</h1>
+        <p class="panel-desc">Configure your topic, style, and audio. The AI handles script, visuals, TTS, editing, and music.</p>
+      </div>
+
+      <div class="two-col">
+        <!-- LEFT: Config -->
+        <div>
+          <div class="card">
+            <div class="card-header">📝 TOPIC & SCRIPT</div>
+            <div class="form-group">
+              <label>TOPIC</label>
+              <input type="text" id="gen-topic" placeholder="Enter a trending topic or custom idea...">
+            </div>
+            <div class="form-group">
+              <label>ADDITIONAL CONTEXT</label>
+              <textarea id="gen-description" placeholder="Any angle, facts, or direction for the script..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>SCRIPT STYLE</label>
+              <div class="style-grid" id="style-grid"></div>
+            </div>
+            <div class="form-group">
+              <label>DURATION</label>
+              <div class="range-group">
+                <input type="range" id="gen-duration" min="15" max="60" value="45" step="5"
+                       oninput="document.getElementById('dur-val').textContent=this.value+'s'">
+                <span class="range-val" id="dur-val">45s</span>
+              </div>
+            </div>
           </div>
-          <div class="progress-stage" id="progress-stage">Initializing...</div>
-          <div class="progress-detail" id="progress-detail"></div>
-          <div class="stage-dots" id="stage-dots">
-            <div class="stage-dot" title="Script"></div>
-            <div class="stage-dot" title="Visuals"></div>
-            <div class="stage-dot" title="TTS"></div>
-            <div class="stage-dot" title="Editing"></div>
-            <div class="stage-dot" title="Music"></div>
-            <div class="stage-dot" title="Done"></div>
+
+          <div class="card">
+            <div class="card-header">🎵 AUDIO & MUSIC</div>
+            <div class="form-group">
+              <label>BACKGROUND MUSIC MOOD</label>
+              <select id="gen-music-mood"></select>
+            </div>
+            <div class="form-group">
+              <label>MUSIC VOLUME</label>
+              <div class="range-group">
+                <input type="range" id="gen-music-vol" min="0" max="40" value="15" step="1"
+                       oninput="document.getElementById('mvol-val').textContent=this.value+'%'">
+                <span class="range-val" id="mvol-val">15%</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>TONE</label>
+              <select id="gen-tone">
+                <option value="energetic">Energetic</option>
+                <option value="dramatic">Dramatic</option>
+                <option value="calm">Calm</option>
+                <option value="humorous">Humorous</option>
+                <option value="suspenseful">Suspenseful</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-full" onclick="startGeneration()" id="btn-generate">
+            ⚡ GENERATE VIDEO
+          </button>
+        </div>
+
+        <!-- RIGHT: Preview / Progress -->
+        <div>
+          <!-- Script Preview -->
+          <div id="script-preview" class="card script-preview" style="display:none">
+            <div class="card-header">📋 SCRIPT PREVIEW</div>
+            <div id="script-scenes"></div>
+          </div>
+
+          <!-- Progress -->
+          <div id="generation-progress" class="card progress-container" style="display:none">
+            <div class="progress-ring">
+              <svg width="160" height="160">
+                <circle class="bg" cx="80" cy="80" r="70"/>
+                <circle class="fg" id="progress-circle" cx="80" cy="80" r="70"
+                        stroke-dasharray="440" stroke-dashoffset="440"/>
+              </svg>
+              <div class="progress-percent" id="progress-percent">0%</div>
+            </div>
+            <div class="progress-stage" id="progress-stage">Initializing...</div>
+            <div class="progress-detail" id="progress-detail"></div>
+            <div class="stage-dots" id="stage-dots">
+              <div class="stage-dot" title="Script"></div>
+              <div class="stage-dot" title="Visuals"></div>
+              <div class="stage-dot" title="TTS"></div>
+              <div class="stage-dot" title="Editing"></div>
+              <div class="stage-dot" title="Music"></div>
+              <div class="stage-dot" title="Done"></div>
+            </div>
+          </div>
+
+          <!-- Empty state -->
+          <div id="generate-empty" class="card">
+            <div class="empty-state">
+              <div class="empty-icon">🎬</div>
+              <h3>CONFIGURE & GENERATE</h3>
+              <p>Pick a topic from Trending or enter your own, configure the style, and hit Generate</p>
+            </div>
           </div>
         </div>
+      </div>
+    </div>
 
-        <!-- Empty state -->
-        <div id="generate-empty" class="empty-state">
-          <div class="empty-icon">🎬</div>
-          <h3>Configure & Generate</h3>
-          <p>Pick a topic from Trending or enter your own, configure the style, and hit Generate</p>
+    <!-- ═══ OUTPUT PANEL ═══ -->
+    <div id="panel-output" class="panel">
+      <div class="panel-hero">
+        <div class="panel-badge">📦 GALLERY</div>
+        <h1 class="panel-title">OUTPUT</h1>
+        <p class="panel-desc">Your AI-generated Shorts, ready to publish.</p>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+        <button class="btn btn-secondary btn-sm" onclick="refreshOutputs()">🔄 Refresh</button>
+      </div>
+
+      <div id="output-gallery" class="output-gallery">
+        <div class="empty-state" style="grid-column:1/-1">
+          <div class="empty-icon">📦</div>
+          <h3>NO VIDEOS YET</h3>
+          <p>Generate your first video from the Generate tab</p>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- ═══ OUTPUT PANEL ═══ -->
-  <div id="panel-output" class="factory-panel">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="font-size:1.1rem;font-weight:600">Generated Videos</h2>
-      <button class="btn btn-outline btn-sm" onclick="refreshOutputs()">🔄 Refresh</button>
-    </div>
-    <div id="output-gallery" class="output-gallery">
-      <div class="empty-state" style="grid-column:1/-1">
-        <div class="empty-icon">📦</div>
-        <h3>No Videos Yet</h3>
-        <p>Generate your first video from the Generate tab</p>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -474,24 +763,27 @@ async function loadConfig() {
 
 function selectStyle(id) {
   selectedStyle = id;
-  document.querySelectorAll('.style-card').forEach(c => {
-    c.classList.toggle('selected', c.querySelector('.style-name')?.textContent.toLowerCase().includes(id));
-  });
-  // Re-select properly
   document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
-  const cards = document.querySelectorAll('.style-card');
-  cards.forEach(c => {
+  document.querySelectorAll('.style-card').forEach(c => {
     const name = c.querySelector('.style-name').textContent.toLowerCase();
     if (name === id || name === id.replace('_',' ')) c.classList.add('selected');
   });
 }
 
 // ═══ TABS ═══
-function switchTab(name) {
-  document.querySelectorAll('.factory-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.factory-panel').forEach(p => p.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('panel-'+name).classList.add('active');
+function switchTab(name, clickedEl) {
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+
+  if (clickedEl) {
+    clickedEl.classList.add('active');
+  } else {
+    // Programmatic call — find matching tab
+    document.querySelectorAll('.tab-item').forEach(t => {
+      if (t.textContent.toLowerCase().includes(name)) t.classList.add('active');
+    });
+  }
+  document.getElementById('panel-' + name).classList.add('active');
 }
 
 // ═══ TRENDING ═══
@@ -508,7 +800,7 @@ async function fetchTrending() {
     const grid = document.getElementById('trending-grid');
     if (!d.success || !d.topics?.length) {
       grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
-        <div class="empty-icon">😕</div><h3>No trends found</h3>
+        <div class="empty-icon">😕</div><h3>NO TRENDS FOUND</h3>
         <p>Try a different region or check your API keys (YOUTUBE_API_KEY)</p></div>`;
       document.getElementById('trend-count').textContent = '';
       return;
@@ -518,7 +810,7 @@ async function fetchTrending() {
     grid.innerHTML = '';
 
     d.topics.forEach(t => {
-      const scoreColor = t.score > 70 ? 'var(--green)' : t.score > 40 ? 'var(--amber)' : 'var(--text3)';
+      const scoreColor = t.score > 70 ? 'var(--green)' : t.score > 40 ? 'var(--yellow)' : 'var(--text-dim)';
       const card = document.createElement('div');
       card.className = 'trend-card';
       card.innerHTML = `
@@ -534,7 +826,7 @@ async function fetchTrending() {
         </div>
         ${t.keywords?.length ? `<div class="trend-keywords">${t.keywords.slice(0,5).map(k=>`<span>${escHtml(k)}</span>`).join('')}</div>` : ''}
         <button class="use-btn" onclick="useTopic(${JSON.stringify(t).replace(/"/g,'&quot;')})">
-          ⚡ Use This Topic
+          ⚡ USE THIS TOPIC
         </button>
       `;
       grid.appendChild(card);
@@ -551,9 +843,6 @@ function useTopic(topic) {
   document.getElementById('gen-topic').value = topic.title;
   document.getElementById('gen-description').value = topic.description || '';
   switchTab('generate');
-  document.querySelectorAll('.factory-tab').forEach(t => {
-    t.classList.toggle('active', t.textContent.includes('Generate'));
-  });
   showToast(`Topic loaded: "${topic.title}"`, 'info');
 }
 
@@ -564,7 +853,7 @@ async function startGeneration() {
 
   const btn = document.getElementById('btn-generate');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Starting...';
+  btn.innerHTML = '<span class="spinner"></span> STARTING...';
 
   const payload = {
     topic,
@@ -589,16 +878,23 @@ async function startGeneration() {
     currentJobId = d.job_id;
     document.getElementById('generate-empty').style.display = 'none';
     document.getElementById('script-preview').style.display = 'none';
+    document.getElementById('script-preview').removeAttribute('data-loaded');
     document.getElementById('generation-progress').style.display = 'block';
 
-    // Start polling
+    // Reset progress
+    document.getElementById('progress-percent').textContent = '0%';
+    document.getElementById('progress-circle').style.strokeDashoffset = '440';
+    document.querySelectorAll('.stage-dot').forEach(d => d.classList.remove('active','done'));
+
+    // Clear existing poll timer
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     pollTimer = setInterval(() => pollJobStatus(currentJobId), 2000);
 
   } catch(e) {
     showToast('Generation error: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '⚡ Generate Video';
+    btn.innerHTML = '⚡ GENERATE VIDEO';
   }
 }
 
@@ -623,13 +919,7 @@ async function pollJobStatus(jobId) {
       if (job.status === 'done') {
         showToast('Video generated successfully!', 'success');
         refreshOutputs();
-        // Auto-switch to output tab after brief delay
-        setTimeout(() => {
-          switchTab('output');
-          document.querySelectorAll('.factory-tab').forEach(t => {
-            t.classList.toggle('active', t.textContent.includes('Output'));
-          });
-        }, 1500);
+        setTimeout(() => switchTab('output'), 1500);
       } else {
         showToast('Generation failed: ' + (job.error || 'Unknown error'), 'error');
       }
@@ -640,8 +930,7 @@ async function pollJobStatus(jobId) {
 function updateProgress(job) {
   const pct = job.progress || 0;
   const circle = document.getElementById('progress-circle');
-  const circumference = 440;
-  circle.style.strokeDashoffset = circumference - (pct / 100) * circumference;
+  circle.style.strokeDashoffset = 440 - (pct / 100) * 440;
 
   document.getElementById('progress-percent').textContent = Math.round(pct) + '%';
 
@@ -656,7 +945,8 @@ function updateProgress(job) {
     failed: '❌ Failed',
   };
   document.getElementById('progress-stage').textContent = stageLabels[job.status] || job.status;
-  document.getElementById('progress-detail').textContent = job.message || '';
+  document.getElementById('progress-detail').textContent =
+    job.status === 'failed' ? (job.error || job.message || 'Unknown error') : (job.message || '');
 
   // Update stage dots
   const stages = ['scripting','visuals','tts','editing','music','done'];
@@ -675,9 +965,9 @@ function renderScriptPreview(script) {
   preview.style.display = 'block';
   preview.dataset.loaded = '1';
 
-  let html = `<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--bg4)">
-    <strong style="font-size:1rem">${escHtml(script.title)}</strong>
-    <div style="font-size:.78rem;color:var(--text3);margin-top:4px">
+  let html = `<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+    <strong style="font-family:var(--display);font-size:1.2rem;letter-spacing:0.04em;color:var(--white)">${escHtml(script.title)}</strong>
+    <div style="font-size:.76rem;color:var(--text-dim);margin-top:6px;font-family:var(--mono)">
       ${script.scenes?.length || 0} scenes · ${Math.round(script.total_duration)}s · ${script.tone}
     </div>
   </div>`;
@@ -685,11 +975,11 @@ function renderScriptPreview(script) {
   (script.scenes || []).forEach(s => {
     html += `<div class="scene-block">
       <div class="scene-head">
-        <span>Scene ${s.scene_number} · ${s.visual_type.replace('_',' ')}</span>
+        <span>SCENE ${s.scene_number} · ${(s.visual_type||'').replace('_',' ').toUpperCase()}</span>
         <span>${s.start_time}s — ${s.end_time}s</span>
       </div>
       <div class="scene-narration">${escHtml(s.narration)}</div>
-      <div class="scene-visual">🎨 ${escHtml(s.visual_description?.substring(0,80) || '')}</div>
+      <div class="scene-visual">🎨 ${escHtml((s.visual_description||'').substring(0,80))}</div>
     </div>`;
   });
 
@@ -708,7 +998,7 @@ async function refreshOutputs() {
 
     if (!doneJobs.length) {
       gallery.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
-        <div class="empty-icon">📦</div><h3>No Videos Yet</h3>
+        <div class="empty-icon">📦</div><h3>NO VIDEOS YET</h3>
         <p>Generate your first video from the Generate tab</p></div>`;
       return;
     }
@@ -718,10 +1008,7 @@ async function refreshOutputs() {
       const card = document.createElement('div');
       card.className = 'output-card';
       card.innerHTML = `
-        <video controls preload="metadata"
-               src="/api/factory/job/${job.job_id}/video"
-               poster="">
-        </video>
+        <video controls preload="metadata" src="/api/factory/job/${job.job_id}/video"></video>
         <div class="output-info">
           <div class="output-title">${escHtml(job.script?.title || job.topic)}</div>
           <div class="output-meta">
@@ -733,7 +1020,7 @@ async function refreshOutputs() {
             <a href="/api/factory/job/${job.job_id}/video" download class="btn btn-primary btn-sm">
               ⬇ Download
             </a>
-            <button class="btn btn-outline btn-sm" onclick="deleteFactoryJob('${job.job_id}')">
+            <button class="btn btn-secondary btn-sm" onclick="deleteFactoryJob('${job.job_id}')">
               🗑 Delete
             </button>
           </div>

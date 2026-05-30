@@ -79,6 +79,13 @@ _factory_jobs: dict[str, FactoryJob] = {}
 _factory_lock = threading.Lock()
 
 
+def _update_job(job: FactoryJob, **kwargs):
+    """Thread-safe update of job fields."""
+    with _factory_lock:
+        for k, v in kwargs.items():
+            setattr(job, k, v)
+
+
 def get_job(job_id: str) -> Optional[FactoryJob]:
     with _factory_lock:
         return _factory_jobs.get(job_id)
@@ -149,9 +156,7 @@ def _run_pipeline(job: FactoryJob):
 
     try:
         # ── Stage 1: Script Generation (0-20%) ──
-        job.status = "scripting"
-        job.message = "Generating original script..."
-        job.progress = 5
+        _update_job(job, status="scripting", message="Generating original script...", progress=5)
 
         script = generate_script(
             topic=job.topic,
@@ -164,14 +169,12 @@ def _run_pipeline(job: FactoryJob):
 
         if not script:
             detail = getattr(script_generator, '_last_error', '') or 'Unknown error'
-            job.status = "failed"
-            job.error = f"Script generation failed: {detail}"
+            _update_job(job, status="failed", error=f"Script generation failed: {detail}")
             logger.error(f"[{job.job_id}] Script failed: {detail}")
             return
 
-        job.script = script.to_dict()
-        job.progress = 20
-        job.message = f"Script ready: {len(script.scenes)} scenes"
+        _update_job(job, script=script.to_dict(), progress=20,
+                    message=f"Script ready: {len(script.scenes)} scenes")
         logger.info(f"[{job.job_id}] Script done: '{script.title}'")
 
         # Save script to disk
@@ -180,9 +183,7 @@ def _run_pipeline(job: FactoryJob):
             json.dump(script.to_dict(), f, indent=2)
 
         # ── Stage 2: Visual Fetching (20-50%) ──
-        job.status = "visuals"
-        job.message = "Fetching visuals for each scene..."
-        job.progress = 25
+        _update_job(job, status="visuals", message="Fetching visuals for each scene...", progress=25)
 
         visuals_dir = os.path.join(job.output_dir, "visuals")
         visual_clips = fetch_visuals_for_script(
@@ -191,19 +192,15 @@ def _run_pipeline(job: FactoryJob):
 
         success_count = sum(1 for v in visual_clips if v.success)
         if success_count == 0:
-            job.status = "failed"
-            job.error = "No visuals could be fetched for any scene"
+            _update_job(job, status="failed", error="No visuals could be fetched for any scene")
             return
 
-        job.visuals = [v.to_dict() for v in visual_clips]
-        job.progress = 50
-        job.message = f"Visuals ready: {success_count}/{len(visual_clips)} scenes"
+        _update_job(job, visuals=[v.to_dict() for v in visual_clips], progress=50,
+                    message=f"Visuals ready: {success_count}/{len(visual_clips)} scenes")
         logger.info(f"[{job.job_id}] Visuals: {success_count}/{len(visual_clips)}")
 
         # ── Stage 3: TTS Narration (50-65%) ──
-        job.status = "tts"
-        job.message = "Generating voiceover narration..."
-        job.progress = 55
+        _update_job(job, status="tts", message="Generating voiceover narration...", progress=55)
 
         # Combine all scene narrations into full script
         full_narration = " ".join(s.narration for s in script.scenes)
@@ -231,14 +228,10 @@ def _run_pipeline(job: FactoryJob):
             from music_mixer import generate_silent_tone
             generate_silent_tone(script.total_duration, tts_path)
 
-        job.tts_path = tts_path
-        job.progress = 65
-        job.message = "Voiceover ready"
+        _update_job(job, tts_path=tts_path, progress=65, message="Voiceover ready")
 
         # ── Stage 4: Video Assembly (65-85%) ──
-        job.status = "editing"
-        job.message = "Assembling and editing video..."
-        job.progress = 70
+        _update_job(job, status="editing", message="Assembling and editing video...", progress=70)
 
         # Build scene clip list for the editor
         scene_clip_data = []
@@ -265,13 +258,11 @@ def _run_pipeline(job: FactoryJob):
         edit_result = assemble_video(scene_clip_data, assembled_path, edit_config)
 
         if not edit_result.success:
-            job.status = "failed"
-            job.error = f"Video assembly failed: {edit_result.error}"
+            _update_job(job, status="failed", error=f"Video assembly failed: {edit_result.error}")
             return
 
-        job.assembled_path = assembled_path
-        job.progress = 80
-        job.message = "Video assembled, adding audio..."
+        _update_job(job, assembled_path=assembled_path, progress=80,
+                    message="Video assembled, adding audio...")
 
         # ── Stage 4b: Mux TTS audio onto assembled video ──
         narrated_path = os.path.join(job.output_dir, "narrated.mp4")
@@ -281,13 +272,10 @@ def _run_pipeline(job: FactoryJob):
             # Fallback: use assembled without narration
             narrated_path = assembled_path
 
-        job.progress = 85
-        job.message = "Narration synced"
+        _update_job(job, progress=85, message="Narration synced")
 
         # ── Stage 5: Background Music (85-95%) ──
-        job.status = "music"
-        job.message = "Adding background music..."
-        job.progress = 88
+        _update_job(job, status="music", message="Adding background music...", progress=88)
 
         music_mood = cfg.get("music_mood", "upbeat")
         music_vol = cfg.get("music_volume", 0.15)
@@ -314,29 +302,23 @@ def _run_pipeline(job: FactoryJob):
             shutil.copy2(narrated_path, final_path)
             logger.info(f"[{job.job_id}] No background music — skipped")
 
-        job.progress = 95
-        job.message = "Final touches..."
+        _update_job(job, progress=95, message="Final touches...")
 
         # ── Stage 6: Finalize (95-100%) ──
         if os.path.isfile(final_path):
-            job.final_path = final_path
-            job.status = "done"
-            job.progress = 100
-            job.message = "Video ready!"
-            job.completed_at = time.time()
+            _update_job(job, final_path=final_path, status="done", progress=100,
+                        message="Video ready!", completed_at=time.time())
             elapsed = job.completed_at - job.created_at
             logger.info(
                 f"[{job.job_id}] Content factory complete: "
                 f"'{script.title}' in {elapsed:.0f}s"
             )
         else:
-            job.status = "failed"
-            job.error = "Final output file missing"
+            _update_job(job, status="failed", error="Final output file missing")
 
     except Exception as e:
         logger.error(f"[{job.job_id}] Pipeline error: {e}")
-        job.status = "failed"
-        job.error = str(e)
+        _update_job(job, status="failed", error=str(e))
 
 
 def _mux_audio(video_path: str, audio_path: str, output_path: str) -> bool:
