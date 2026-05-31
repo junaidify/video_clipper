@@ -1604,6 +1604,10 @@
             <span class="t-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span> Output
         </div>
         <div class="tab-sep"></div>
+        <div class="tab-item" data-panel="enhanced" onclick="switchPanel('enhanced')">
+            <span class="t-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span> Enhanced
+        </div>
+        <div class="tab-sep"></div>
         <div class="tab-item" data-panel="settings" onclick="switchPanel('settings')">
             <span class="t-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Settings
         </div>
@@ -1862,6 +1866,20 @@
             <div class="empty-state" id="output-empty">
                 <div class="icon"><svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
                 <p>No clips generated yet.</p>
+            </div>
+        </div>
+
+        <!-- ENHANCED PANEL -->
+        <div class="panel" id="panel-enhanced">
+            <div class="panel-hero reveal">
+                <div class="panel-badge"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Post-Production</div>
+                <div class="panel-title">ENHANCED CLIPS</div>
+                <div class="panel-desc">Subtitled, overlaid, and thumbnail-enhanced versions of your clips.</div>
+            </div>
+            <div id="enhanced-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;padding:0 5px"></div>
+            <div class="empty-state" id="enhanced-empty">
+                <div class="icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+                <p>No enhanced clips yet. Use the Subtitles, Text, or Thumb buttons on any clip to create one.</p>
             </div>
         </div>
 
@@ -2600,6 +2618,7 @@ function switchPanel(name, pushHistory = true) {
     });
     if (['smart','manual','sequential'].includes(name)) refreshVideoSelects();
     if (name === 'output') loadOutputs();
+    if (name === 'enhanced') renderEnhancedPanel();
     // Track history
     if (pushHistory && panelHistory[panelHistory.length - 1] !== name) {
         panelHistory.push(name);
@@ -2703,13 +2722,49 @@ async function addVideoFromFile() {
     const file = document.getElementById('lib-file').files[0];
     if (!file) return showErr('lib-error', 'Select a file');
     hideErr('lib-error');
-    showLibProgress('Uploading...', 30);
+
+    const sizeMB = (file.size / (1024*1024)).toFixed(0);
+    showLibProgress(`Uploading ${sizeMB} MB...`, 10);
+
     const form = new FormData();
     form.append('video', file);
     try {
-        const res = await fetch('/api/library/add', {method:'POST', body: form});
-        const data = await res.json();
+        // Use XMLHttpRequest for upload progress on large files
+        const data = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/library/add');
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 55) + 5;
+                    const loadedMB = (e.loaded / (1024*1024)).toFixed(0);
+                    showLibProgress(`Uploading: ${loadedMB} / ${sizeMB} MB`, pct);
+                }
+            };
+            xhr.onload = () => {
+                if (xhr.status === 413) {
+                    reject(new Error('File too large — max 5GB'));
+                    return;
+                }
+                try { resolve(JSON.parse(xhr.responseText)); }
+                catch(e) { reject(new Error(`Server error (HTTP ${xhr.status})`)); }
+            };
+            xhr.onerror = () => reject(new Error('Upload failed — check file size and network'));
+            xhr.ontimeout = () => reject(new Error('Upload timed out'));
+            xhr.timeout = 600000; // 10 min timeout for large files
+            xhr.send(form);
+        });
+
         if (data.error) { showErr('lib-error', data.error); hideLibProgress(); return; }
+
+        // If server returned a job_id, the file is being processed async
+        if (data.job_id) {
+            showLibProgress('Processing large file...', 60);
+            _currentLibJobId = data.job_id;
+            _libPollTimer = setInterval(pollLibJob, 1500);
+            return;
+        }
+
+        // Small file: completed synchronously
         hideLibProgress();
         document.getElementById('lib-file-name').textContent = '';
         loadLibrary();
@@ -3181,7 +3236,7 @@ async function openFolder(idx) {
                             <span class="occ-size">${f.size_mb} MB</span>
                             <a class="occ-dl" href="${f.url}" download="${escHtml(f.filename)}" title="Download"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
                         </div>
-                        <div style="padding:6px 14px 14px;display:flex;gap:8px;flex-wrap:wrap">
+                        <div style="padding:6px 14px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                             <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
                                 <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="14" x2="23" y2="14"/></svg>
                                 Subtitles
@@ -3283,6 +3338,191 @@ function clipCardHtml(c, jobId) {
             ${clipActionsHtml(jobId, c.filename)}
         </div>
     </div>`;
+}
+
+// ═══════════════════════════════════════
+//  ONE-CLICK ENHANCE BUTTONS + ENHANCED PANEL
+// ═══════════════════════════════════════
+const _enhancedClips = []; // {type, jobId, filename, url, thumbUrl, srtUrl, originalName, timestamp}
+
+function _addEnhancedClip(entry) {
+    _enhancedClips.unshift(entry);
+    // Update badge count on tab
+    const tab = document.querySelector('.tab-item[data-panel="enhanced"]');
+    if (tab) {
+        let badge = tab.querySelector('.enhance-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'enhance-badge';
+            badge.style.cssText = 'background:var(--lime);color:#111;font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:50px;margin-left:6px';
+            tab.appendChild(badge);
+        }
+        badge.textContent = _enhancedClips.length;
+    }
+}
+
+function _btnLoading(btn, text) {
+    btn.classList.add('loading');
+    btn.dataset.origHtml = btn.innerHTML;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/></svg> ${text}`;
+}
+function _btnDone(btn, text, color) {
+    btn.classList.remove('loading');
+    btn.innerHTML = `<svg viewBox="0 0 24 24" stroke="${color||'var(--green)'}" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> ${text}`;
+    btn.style.borderColor = color || 'var(--green)';
+    btn.style.color = color || 'var(--green)';
+}
+function _btnReset(btn) {
+    btn.classList.remove('loading');
+    btn.innerHTML = btn.dataset.origHtml || 'Retry';
+}
+
+// ── Subtitles: one-click auto-burn ──
+async function oneClickSubtitle(jobId, filename, btn) {
+    if (btn.classList.contains('loading')) return;
+    _btnLoading(btn, 'Loading Whisper...');
+    // Show elapsed timer so user knows it's working
+    const startTime = Date.now();
+    const timer = setInterval(() => {
+        const secs = Math.floor((Date.now() - startTime) / 1000);
+        if (btn.classList.contains('loading')) {
+            const stage = secs < 15 ? 'Loading model...' : secs < 60 ? 'Transcribing...' : 'Burning subs...';
+            btn.innerHTML = `<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/></svg> ${stage} (${secs}s)`;
+        }
+    }, 1000);
+    try {
+        const res = await fetch('/api/clips/subtitle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: jobId, filename: filename, model_size: 'base'})
+        });
+        clearInterval(timer);
+        if (!res.ok) {
+            const errText = await res.text();
+            alert('Subtitle error (HTTP ' + res.status + '): ' + errText);
+            _btnReset(btn);
+            return;
+        }
+        const data = await res.json();
+        if (data.error) { alert('Subtitle error: ' + data.error); _btnReset(btn); return; }
+        _btnDone(btn, 'Subtitled');
+        _addEnhancedClip({
+            type: 'subtitled', jobId, filename: data.subtitled_url.split('/').pop(),
+            url: data.subtitled_url, srtUrl: data.srt_url,
+            originalName: filename, timestamp: Date.now()
+        });
+    } catch(e) { clearInterval(timer); alert('Subtitle failed: ' + e.message); _btnReset(btn); }
+}
+
+// ── Text Overlay: prompt for text, then one-click burn ──
+function oneClickOverlay(jobId, filename, btn) {
+    if (btn.classList.contains('loading')) return;
+    // Show inline text input
+    const parent = btn.parentElement;
+    if (parent.querySelector('.overlay-inline-row')) return; // already open
+    const row = document.createElement('div');
+    row.className = 'overlay-inline-row';
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;width:100%;margin-top:6px';
+    row.innerHTML = `
+        <input type="text" placeholder="Enter overlay text..." style="flex:1;background:rgba(202,255,0,0.08);border:1px solid rgba(202,255,0,0.3);border-radius:8px;padding:5px 10px;color:var(--lime);font-size:0.72rem;font-family:'JetBrains Mono',monospace;outline:none" />
+        <button class="clip-act-btn" style="font-size:0.72rem;padding:5px 12px;color:#111;background:var(--lime);border-color:var(--lime);border-radius:8px;white-space:nowrap">GO</button>
+        <button class="clip-act-btn" style="font-size:0.72rem;padding:5px 8px;color:var(--text-dim);border-color:transparent">✕</button>
+    `;
+    parent.appendChild(row);
+    const input = row.querySelector('input');
+    input.focus();
+    row.querySelector('button:last-child').onclick = () => row.remove();
+    const goBtn = row.querySelectorAll('button')[0];
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') goBtn.click(); });
+    goBtn.onclick = async () => {
+        const text = input.value.trim();
+        if (!text) { input.style.borderColor = '#ef4444'; return; }
+        row.remove();
+        _btnLoading(btn, 'Burning text...');
+        try {
+            const words = text.split(/\s+/);
+            const textBlocks = [{
+                words: words.map((w,i) => ({text: w, color: i === 0 ? '#CAFF00' : '#FFFFFF'})),
+                x: 0.5, y: 0.15, font_size: 48, bg_opacity: 0.6
+            }];
+            const res = await fetch('/api/clips/overlay', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({job_id: jobId, filename: filename, text_blocks: textBlocks})
+            });
+            const data = await res.json();
+            if (data.error) { alert('Overlay error: ' + data.error); _btnReset(btn); return; }
+            _btnDone(btn, 'Overlaid');
+            _addEnhancedClip({
+                type: 'overlay', jobId, filename: data.overlay_url.split('/').pop(),
+                url: data.overlay_url, overlayText: text,
+                originalName: filename, timestamp: Date.now()
+            });
+        } catch(e) { alert('Overlay failed: ' + e.message); _btnReset(btn); }
+    };
+}
+
+// ── Thumbnail: one-click auto-generate ──
+async function oneClickThumbnail(jobId, filename, btn) {
+    if (btn.classList.contains('loading')) return;
+    _btnLoading(btn, 'Generating...');
+    try {
+        const res = await fetch('/api/clips/thumbnail', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: jobId, filename: filename, title: filename.replace(/\.[^.]+$/,''), mode: 'template', style: 'bold'})
+        });
+        const data = await res.json();
+        if (data.error) { alert('Thumbnail error: ' + data.error); _btnReset(btn); return; }
+        _btnDone(btn, 'Generated');
+        _addEnhancedClip({
+            type: 'thumbnail', jobId, filename: data.thumbnail_url.split('/').pop(),
+            url: data.thumbnail_url, thumbUrl: data.thumbnail_url,
+            originalName: filename, timestamp: Date.now()
+        });
+    } catch(e) { alert('Thumbnail failed: ' + e.message); _btnReset(btn); }
+}
+
+// ── Enhanced Panel Renderer ──
+function renderEnhancedPanel() {
+    const list = document.getElementById('enhanced-list');
+    const empty = document.getElementById('enhanced-empty');
+    if (!_enhancedClips.length) {
+        list.innerHTML = '';
+        empty.style.display = '';
+        return;
+    }
+    empty.style.display = 'none';
+    list.innerHTML = _enhancedClips.map((c, i) => {
+        const typeLabel = c.type === 'subtitled' ? 'SUBTITLED' : c.type === 'overlay' ? 'TEXT OVERLAY' : 'THUMBNAIL';
+        const typeColor = c.type === 'subtitled' ? 'var(--lime)' : c.type === 'overlay' ? 'var(--accent)' : '#f59e0b';
+        const isImage = c.type === 'thumbnail';
+        const media = isImage
+            ? `<img src="${c.url}" style="width:100%;border-radius:10px 10px 0 0;aspect-ratio:16/9;object-fit:cover" />`
+            : `<video controls preload="metadata" style="width:100%;border-radius:10px 10px 0 0"><source src="${c.url}" type="video/mp4"></video>`;
+        const time = new Date(c.timestamp).toLocaleTimeString();
+        const extras = [];
+        if (c.srtUrl) extras.push(`<a href="${c.srtUrl}" download class="clip-act-btn" style="font-size:0.68rem;padding:4px 10px">.SRT</a>`);
+        if (c.overlayText) extras.push(`<span style="font-size:0.68rem;color:var(--text-dim);font-style:italic">"${escHtml(c.overlayText)}"</span>`);
+        return `<div class="card" style="background:var(--card);border:1px solid rgba(202,255,0,0.08);border-radius:12px;overflow:hidden">
+            ${media}
+            <div style="padding:10px 14px 14px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                    <span style="font-size:0.65rem;font-weight:700;color:${typeColor};letter-spacing:0.05em">${typeLabel}</span>
+                    <span style="font-size:0.62rem;color:var(--text-dim)">${time}</span>
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-bright);margin-bottom:8px;word-break:break-all">${escHtml(c.originalName)}</div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <a href="${c.url}" download class="clip-act-btn" style="font-size:0.68rem;padding:4px 10px;color:var(--lime);border-color:var(--lime)">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download
+                    </a>
+                    ${extras.join('')}
+                    <button class="clip-act-btn" onclick="_enhancedClips.splice(${i},1);renderEnhancedPanel()" style="font-size:0.68rem;padding:4px 8px;color:#ef4444;border-color:rgba(220,38,38,0.3);margin-left:auto">✕</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 // ═══════════════════════════════════════
@@ -4514,6 +4754,10 @@ async function deleteClipFile(jobId, filename, btn) {
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ job_id: jobId, filename })
         });
+        if (!res.ok && res.headers.get('content-type')?.indexOf('json') === -1) {
+            alert('Delete failed: server returned HTTP ' + res.status);
+            return;
+        }
         const data = await res.json();
         if (data.success) {
             const card = btn.closest('.output-clip-card') || btn.closest('.clip-card');

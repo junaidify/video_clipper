@@ -16,6 +16,52 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# --- Devanagari to Roman (Hinglish) transliteration ---
+_DEVA_TO_ROMAN = {
+    'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo',
+    'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ऋ': 'ri',
+    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng',
+    'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'n',
+    'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+    'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+    'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+    'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh',
+    'ष': 'sh', 'स': 's', 'ह': 'h',
+    'क़': 'q', 'ख़': 'kh', 'ग़': 'gh', 'ज़': 'z', 'फ़': 'f', 'ड़': 'r', 'ढ़': 'rh',
+    'ा': 'a', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo',
+    'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ृ': 'ri',
+    '्': '', 'ं': 'n', 'ँ': 'n', 'ः': 'h', 'ऽ': '',
+    '।': '.', '॥': '.',
+    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+    '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
+}
+
+def _devanagari_to_roman(text):
+    result = []
+    i = 0
+    while i < len(text):
+        # Try 2-char combo first (e.g. conjuncts with nukta)
+        if i + 1 < len(text) and text[i:i+2] in _DEVA_TO_ROMAN:
+            result.append(_DEVA_TO_ROMAN[text[i:i+2]])
+            i += 2
+        elif text[i] in _DEVA_TO_ROMAN:
+            result.append(_DEVA_TO_ROMAN[text[i]])
+            i += 1
+        else:
+            result.append(text[i])
+            i += 1
+    # Add implicit 'a' after consonants not followed by vowel/halant
+    return ''.join(result)
+
+def _has_devanagari(text):
+    return any(0x0900 <= ord(c) <= 0x097F for c in text)
+
+def _to_hinglish(text):
+    if not _has_devanagari(text):
+        return text
+    return _devanagari_to_roman(text)
+
+
 
 def _ffmpeg_font_setup() -> dict:
     """
@@ -122,7 +168,7 @@ def _format_srt_time(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def transcribe_with_whisper(video_path: str, model_size: str = "base") -> list:
+def transcribe_with_whisper(video_path: str, model_size: str = "base", language: str = None) -> list:
     """
     Transcribe video using local Whisper and return word-level timestamps.
 
@@ -148,13 +194,19 @@ def transcribe_with_whisper(video_path: str, model_size: str = "base") -> list:
 
         from transcriber import resolve_device
         model = whisper.load_model(model_size, device=resolve_device("auto"))
-        result = model.transcribe(audio_path, word_timestamps=True, verbose=False)
+        # language: 'hinglish' = transcribe Hindi then romanize, 'en' = English
+        whisper_lang = 'hi' if language in ('hinglish', 'hi') else 'en'
+        logger.info(f"Whisper language: {whisper_lang} (requested: {language})")
+        result = model.transcribe(audio_path, word_timestamps=True, verbose=False, language=whisper_lang)
 
         words = []
         for seg in result.get("segments", []):
             for w in seg.get("words", []):
+                word_text = w["word"].strip()
+                if language in ('hinglish', 'hi') and _has_devanagari(word_text):
+                    word_text = _to_hinglish(word_text)
                 words.append({
-                    "word": w["word"].strip(),
+                    "word": word_text,
                     "start": round(w["start"], 3),
                     "end": round(w["end"], 3),
                 })
@@ -166,7 +218,7 @@ def transcribe_with_whisper(video_path: str, model_size: str = "base") -> list:
             os.unlink(audio_path)
 
 
-def transcribe_with_gemini(video_path: str) -> list:
+def transcribe_with_gemini(video_path: str, language: str = None) -> list:
     """
     Fallback: transcribe using Gemini API.
     Extracts audio, sends to Gemini for transcription with timestamps.
@@ -201,11 +253,15 @@ def transcribe_with_gemini(video_path: str) -> list:
         # Upload audio file
         audio_file = genai.upload_file(audio_path, mime_type="audio/mpeg")
 
-        prompt = """Transcribe this audio with word-level timestamps.
+        if language in ("hinglish", "hi"):
+            lang_instruction = "Transcribe this Hindi audio in ROMAN/LATIN script (Hinglish). Example: main kitne dinon tak rahunga. Do NOT use Devanagari or Arabic script."
+        else:
+            lang_instruction = "Transcribe this English audio accurately."
+        prompt = f"""{lang_instruction}
 Return ONLY a JSON array, no markdown, no explanation.
-Each element: {"word": "the_word", "start": seconds_float, "end": seconds_float}
+Each element: {{"word": "the_word", "start": seconds_float, "end": seconds_float}}
 Group into natural phrases of 4-8 words for subtitle display.
-Example: [{"word": "Hello world", "start": 0.0, "end": 0.8}, ...]"""
+Example: [{{"word": "Hello world", "start": 0.0, "end": 0.8}}, ...]"""
 
         response = model.generate_content([prompt, audio_file])
         text = response.text.strip()
@@ -283,7 +339,7 @@ def words_to_srt(words: list, max_words_per_line: int = 6,
     return "\n".join(srt_lines)
 
 
-def generate_subtitles(video_path: str, model_size: str = "base") -> dict:
+def generate_subtitles(video_path: str, model_size: str = "base", language: str = None) -> dict:
     """
     Generate subtitles for a video. Tries Whisper locally, falls back to Gemini.
 
@@ -295,7 +351,7 @@ def generate_subtitles(video_path: str, model_size: str = "base") -> dict:
     # Try Whisper first
     try:
         logger.info(f"Attempting Whisper transcription (model={model_size})")
-        words = transcribe_with_whisper(video_path, model_size)
+        words = transcribe_with_whisper(video_path, model_size, language=language)
         if words:
             srt = words_to_srt(words)
             return {"words": words, "srt": srt, "method": "whisper"}
@@ -305,7 +361,7 @@ def generate_subtitles(video_path: str, model_size: str = "base") -> dict:
     # Fallback to Gemini
     try:
         logger.info("Falling back to Gemini for transcription")
-        words = transcribe_with_gemini(video_path)
+        words = transcribe_with_gemini(video_path, language=language)
         if words:
             srt = words_to_srt(words)
             return {"words": words, "srt": srt, "method": "gemini"}
@@ -440,117 +496,135 @@ def burn_subtitles(video_path: str, srt_content: str, output_path: str,
 def burn_text_overlay(video_path: str, output_path: str,
                       text_blocks: list) -> str:
     """
-    Burn text overlays onto video at specific positions with per-word colors.
-    Uses -filter_script to avoid all Windows command-line escaping issues.
-
-    Args:
-        video_path: Input video
-        output_path: Output video path
-        text_blocks: List of text overlay specs:
-            [{
-                "text": "YOUR HEADLINE",
-                "x": 0.5,  # normalized 0-1 (center)
-                "y": 0.3,  # normalized 0-1
-                "font_size": 48,
-                "words": [
-                    {"word": "YOUR", "color": "#CAFF00"},
-                    {"word": "HEADLINE", "color": "#FFFFFF"}
-                ]
-            }]
-
-    Returns:
-        Path to output video
+    Burn text overlays onto video using Pillow for text rendering + FFmpeg for compositing.
+    This avoids FFmpeg drawtext font issues on Windows.
     """
+    from PIL import Image, ImageDraw, ImageFont
+
     video_path = str(Path(video_path).resolve())
     output_path = str(Path(output_path).resolve())
 
     w, h = _get_video_dimensions(video_path)
-    font_setup = _ffmpeg_font_setup()
-    font_param = font_setup["font_param"]
 
-    def _esc(txt: str) -> str:
-        """Escape text for FFmpeg drawtext — backslash-escape special chars."""
-        for ch in ("\\", "'", ":", ";", "[", "]", ","):
-            txt = txt.replace(ch, "\\" + ch)
-        return txt
+    # Find a suitable font
+    font_path = None
+    for candidate in [
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/Nirmala.ttf",
+        "C:/Windows/Fonts/NirmalaB.ttf",
+        "C:/Windows/Fonts/mangal.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+    ]:
+        if os.path.isfile(candidate):
+            font_path = candidate
+            logger.info(f"Text overlay using font: {candidate}")
+            break
 
-    # Build drawtext filters for each word in each block
-    filters = []
+    if not font_path:
+        logger.warning("No suitable font file found! Text may render as boxes.")
+    
+    # Create transparent overlay image with text
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
     for block in text_blocks:
         bx = block.get("x", 0.5)
         by = block.get("y", 0.5)
         font_size = block.get("font_size", 48)
+        bg_opacity = block.get("bg_opacity", 0.0)
         word_specs = block.get("words", [])
+
+        try:
+            font = ImageFont.truetype(font_path, font_size) if font_path else ImageFont.load_default()
+        except Exception:
+            font = ImageFont.load_default()
 
         if not word_specs:
             text = block.get("text", "")
-            color = block.get("color", "white")
-            px = int(bx * w)
-            py = int(by * h)
-            escaped = _esc(text)
-            filters.append(
-                f"drawtext=text='{escaped}':"
-                f"x={px}-(text_w/2):y={py}-(text_h/2):"
-                f"fontsize={font_size}:fontcolor='{color}':"
-                f"borderw=3:bordercolor=black:"
-                f"{font_param}"
-            )
+            color = block.get("color", "#FFFFFF")
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            px = int(bx * w) - tw // 2
+            py = int(by * h) - th // 2
+
+            # Background
+            if bg_opacity > 0:
+                pad = 10
+                bg_color = (0, 0, 0, int(255 * bg_opacity))
+                draw.rounded_rectangle([px-pad, py-pad, px+tw+pad, py+th+pad], radius=8, fill=bg_color)
+
+            # Outline
+            for dx in range(-3, 4):
+                for dy in range(-3, 4):
+                    if dx*dx + dy*dy <= 9:
+                        draw.text((px+dx, py+dy), text, font=font, fill=(0, 0, 0, 255))
+            draw.text((px, py), text, font=font, fill=color)
         else:
+            # Measure total width for centering
             full_text = " ".join(ws["word"] for ws in word_specs)
-            total_chars = len(full_text)
-            px_start = int(bx * w)
-            py = int(by * h)
+            bbox = draw.textbbox((0, 0), full_text, font=font)
+            total_w = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
 
-            char_w = font_size * 0.55
-            total_w = total_chars * char_w
-            start_x = px_start - total_w / 2
+            start_x = int(bx * w) - total_w // 2
+            py = int(by * h) - th // 2
 
-            offset = 0
+            # Background
+            if bg_opacity > 0:
+                pad = 12
+                bg_color = (0, 0, 0, int(255 * bg_opacity))
+                draw.rounded_rectangle([start_x-pad, py-pad, start_x+total_w+pad, py+th+pad], radius=8, fill=bg_color)
+
+            # Render each word with its color
+            cx = start_x
             for ws in word_specs:
                 word = ws["word"]
-                color = ws.get("color", "white")
-                wx = int(start_x + offset * char_w)
-                escaped = _esc(word)
-                filters.append(
-                    f"drawtext=text='{escaped}':"
-                    f"x={wx}:y={py}-(text_h/2):"
-                    f"fontsize={font_size}:fontcolor='{color}':"
-                    f"borderw=3:bordercolor=black:"
-                    f"{font_param}"
-                )
-                offset += len(word) + 1
+                color_hex = ws.get("color", "#FFFFFF")
+                # Parse hex color
+                c = color_hex.lstrip("#")
+                rgb = tuple(int(c[i:i+2], 16) for i in (0, 2, 4)) + (255,)
 
-    if not filters:
-        raise ValueError("No text overlays provided")
+                # Outline
+                for dx in range(-3, 4):
+                    for dy in range(-3, 4):
+                        if dx*dx + dy*dy <= 9:
+                            draw.text((cx+dx, py+dy), word, font=font, fill=(0, 0, 0, 255))
+                draw.text((cx, py), word, font=font, fill=rgb)
 
-    vf = ",".join(filters)
+                word_bbox = draw.textbbox((0, 0), word + " ", font=font)
+                cx += word_bbox[2] - word_bbox[0]
 
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", video_path,
-        "-vf", vf,
-        "-c:a", "copy",
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        output_path
-    ]
+    # Save overlay as PNG
+    overlay_png = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+    overlay.save(overlay_png)
 
-    logger.info(f"Burning text overlay: {len(filters)} drawtext filters")
-    logger.info(f"VF filter: {vf}")
-    logger.info(f"Font param: {font_param}, cwd: {font_setup['cwd']}")
-    logger.info(f"Full cmd: {cmd}")
-    result = subprocess.run(
-        cmd, capture_output=True, encoding='utf-8', errors='replace',
-        env=font_setup["env"],
-        cwd=font_setup["cwd"],   # run FFmpeg from the font dir so fontfile=font.ttf resolves
-    )
+    try:
+        # Composite overlay onto video with FFmpeg
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-i", overlay_png,
+            "-filter_complex", "[0:v][1:v]overlay=0:0",
+            "-c:a", "copy",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            output_path
+        ]
 
-    if result.returncode != 0:
-        logger.error(f"FFmpeg overlay FULL stderr:\n{result.stderr}")
-        logger.error(f"FFmpeg overlay FULL stdout:\n{result.stdout}")
-        raise RuntimeError(f"FFmpeg overlay failed (code {result.returncode}). "
-                           f"Check server logs for full stderr.")
+        logger.info(f"Burning text overlay (Pillow+FFmpeg composite): {output_path}")
+        result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace')
 
-    logger.info(f"Overlay video saved: {output_path}")
-    return output_path
+        if result.returncode != 0:
+            logger.error(f"FFmpeg overlay composite failed: {result.stderr}")
+            raise RuntimeError(f"FFmpeg overlay failed (code {result.returncode})")
+
+        logger.info(f"Overlay video saved: {output_path}")
+        return output_path
+    finally:
+        if os.path.exists(overlay_png):
+            os.unlink(overlay_png)

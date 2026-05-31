@@ -48,7 +48,7 @@ from music_mixer import get_mood_options
 
 # ─── App Setup ───
 app = Flask(__name__, static_folder='static', template_folder='templates')
-app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max upload
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 * 1024  # 5GB max upload
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 app.config['CLIPS_FOLDER'] = os.path.join(os.path.dirname(__file__), 'clips_output')
 app.config['LIBRARY_FOLDER'] = os.path.join(os.path.dirname(__file__), 'video_library')
@@ -75,6 +75,27 @@ logger = logging.getLogger(__name__)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# Global error handlers — ensure API routes always return JSON, not HTML
+@app.errorhandler(404)
+def not_found_error(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Not found', 'path': request.path}), 404
+    return e
+
+@app.errorhandler(500)
+def internal_error(e):
+    if request.path.startswith('/api/'):
+        logger.exception("Internal server error on %s", request.path)
+        return jsonify({'error': 'Internal server error'}), 500
+    return e
+
+@app.errorhandler(405)
+def method_not_allowed(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Method not allowed'}), 405
+    return e
 
 
 import re
@@ -185,7 +206,7 @@ def library_add():
         thread.start()
         return jsonify({'success': True, 'job_id': job_id})
 
-    # ── File upload path (synchronous — fast enough) ──
+    # ── File upload path ──
     if 'video' in request.files:
         file = request.files['video']
         if file and file.filename and allowed_file(file.filename):
@@ -194,6 +215,28 @@ def library_add():
             tmp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"lib_{uuid.uuid4().hex[:8]}_{filename}")
             file.save(tmp_path)
 
+            file_size = os.path.getsize(tmp_path) if os.path.isfile(tmp_path) else 0
+
+            # Large files (>50MB): process async to avoid browser timeout
+            if file_size > 50 * 1024 * 1024:
+                job_id = str(uuid.uuid4())[:8]
+                jobs[job_id] = {
+                    'status': 'processing',
+                    'progress': 60,
+                    'message': f'Processing upload ({file_size / (1024*1024):.0f} MB)...',
+                    'error': None,
+                    'video': None,
+                    'started_at': time.time(),
+                }
+                thread = threading.Thread(
+                    target=_library_upload_job,
+                    args=(job_id, tmp_path, filename),
+                    daemon=True,
+                )
+                thread.start()
+                return jsonify({'success': True, 'job_id': job_id})
+
+            # Small files: synchronous (fast)
             duration = _get_video_duration(tmp_path)
             title = Path(filename).stem
             entry = video_library.add_video(
@@ -210,6 +253,42 @@ def library_add():
             return jsonify({'success': True, 'video': entry.to_dict()})
 
     return jsonify({'error': 'No valid video file or URL provided'}), 400
+
+
+def _library_upload_job(job_id: str, tmp_path: str, filename: str):
+    """Background job: process large uploaded file into library."""
+    try:
+        jobs[job_id]['message'] = 'Analyzing video...'
+        jobs[job_id]['progress'] = 70
+
+        duration = _get_video_duration(tmp_path)
+
+        jobs[job_id]['message'] = 'Saving to library...'
+        jobs[job_id]['progress'] = 85
+
+        title = Path(filename).stem
+        entry = video_library.add_video(
+            source_path=tmp_path,
+            title=title,
+            source='upload',
+            duration=duration,
+        )
+
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+        jobs[job_id]['video'] = entry.to_dict()
+        jobs[job_id]['progress'] = 100
+        jobs[job_id]['message'] = 'Added to library!'
+        jobs[job_id]['status'] = 'completed'
+
+    except Exception as e:
+        logger.exception("Upload processing failed")
+        jobs[job_id]['status'] = 'error'
+        jobs[job_id]['error'] = str(e)
+        jobs[job_id]['progress'] = 0
 
 
 def _library_download_job(job_id: str, url: str):
@@ -917,9 +996,11 @@ def add_subtitles():
     if not os.path.isfile(clip_path):
         return jsonify({'error': 'Clip file not found'}), 404
 
+    language = data.get('language', None)  # "en", "hi", or None for auto
+
     try:
         # Generate subtitles
-        result = generate_subtitles(clip_path, model_size=model_size)
+        result = generate_subtitles(clip_path, model_size=model_size, language=language)
 
         # Build output filename
         stem = Path(filename).stem
@@ -1143,6 +1224,194 @@ def generate_thumbnail():
     except Exception as e:
         logger.exception(f"Thumbnail generation ({mode}) failed")
         return jsonify({'error': str(e)}), 500
+
+
+# ─── Auto-Enhance (one-click: subtitles + overlay + thumbnail) ───
+_enhance_jobs = {}
+_enhance_lock = threading.Lock()
+
+
+@app.route('/api/clips/suggest-headline', methods=['POST'])
+def suggest_headline():
+    """Use LLM to suggest a short hook headline for a clip."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    hook_text = data.get('hook_text', '')
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    # If hook_text provided from clip metadata, use it; otherwise try transcript
+    if not hook_text:
+        clip_path = os.path.join(_find_job_dir(job_id), filename)
+        if os.path.isfile(clip_path):
+            try:
+                result = generate_subtitles(clip_path, model_size='base')
+                hook_text = ' '.join(w['word'] for w in result.get('words', []))[:300]
+            except Exception:
+                hook_text = ''
+
+    if not hook_text:
+        return jsonify({'headline': 'WATCH THIS', 'source': 'fallback'})
+
+    # Try LLM to generate a punchy 3-5 word headline
+    prompt = f"Generate ONE short punchy video headline (3-5 words, ALL CAPS, no quotes, no hashtags) for this clip transcript:\n\n{hook_text[:500]}\n\nHeadline:"
+    try:
+        llm_cfg = LLMConfig()
+        headline = analyze_with_llm(prompt, llm_cfg)
+        # Clean up: take first line, strip quotes
+        headline = headline.strip().split('\n')[0].strip('"\'').upper()
+        if len(headline) > 50:
+            headline = headline[:50]
+        if not headline:
+            headline = 'WATCH THIS'
+        return jsonify({'headline': headline, 'source': 'llm'})
+    except Exception as e:
+        logger.warning(f"LLM headline suggestion failed: {e}")
+        # Fallback: take first few words of transcript
+        words = hook_text.split()[:5]
+        return jsonify({'headline': ' '.join(words).upper(), 'source': 'transcript'})
+
+
+@app.route('/api/clips/auto-enhance', methods=['POST'])
+def auto_enhance_clip():
+    """Start async auto-enhance: subtitles + text overlay + thumbnail."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    headline = data.get('headline', 'WATCH THIS')
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_path = os.path.join(_find_job_dir(job_id), filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    enhance_id = str(uuid.uuid4())[:8]
+    enhance_job = {
+        'id': enhance_id,
+        'status': 'starting',
+        'progress': 0,
+        'stage': 'Initializing...',
+        'results': {},
+        'error': None,
+    }
+    with _enhance_lock:
+        _enhance_jobs[enhance_id] = enhance_job
+
+    thread = threading.Thread(
+        target=_run_auto_enhance,
+        args=(enhance_id, job_id, filename, headline, clip_path),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({'enhance_id': enhance_id})
+
+
+@app.route('/api/clips/auto-enhance/<enhance_id>', methods=['GET'])
+def auto_enhance_status(enhance_id):
+    """Poll auto-enhance job status."""
+    with _enhance_lock:
+        job = _enhance_jobs.get(enhance_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
+
+
+def _run_auto_enhance(enhance_id, job_id, filename, headline, clip_path):
+    """Background thread: subtitle → overlay → thumbnail pipeline."""
+    def _update(**kwargs):
+        with _enhance_lock:
+            _enhance_jobs[enhance_id].update(kwargs)
+
+    stem = Path(filename).stem
+    ext = Path(filename).suffix
+    job_dir = _find_job_dir(job_id)
+    results = {}
+
+    try:
+        # ── Stage 1: Subtitles (0-50%) ──
+        _update(status='processing', progress=10, stage='Generating subtitles...')
+        try:
+            sub_result = generate_subtitles(clip_path, model_size='base')
+            srt_name = f"{stem}.srt"
+            srt_path = os.path.join(job_dir, srt_name)
+            with open(srt_path, 'w', encoding='utf-8') as f:
+                f.write(sub_result['srt'])
+
+            sub_out_name = f"{stem}_enhanced{ext}"
+            sub_out_path = os.path.join(job_dir, sub_out_name)
+            burn_subtitles(clip_path, sub_result['srt'], sub_out_path)
+
+            results['subtitles'] = {
+                'subtitled_url': f'/clips/{job_id}/{sub_out_name}',
+                'srt_url': f'/clips/{job_id}/{srt_name}',
+                'word_count': len(sub_result.get('words', [])),
+            }
+            # Use subtitled video as input for next stage
+            working_path = sub_out_path
+        except Exception as e:
+            logger.warning(f"Auto-enhance subtitle stage failed: {e}")
+            results['subtitles'] = {'error': str(e)}
+            working_path = clip_path  # Continue with original
+
+        # ── Stage 2: Text Overlay (50-80%) ──
+        _update(progress=50, stage='Burning text overlay...')
+        try:
+            overlay_out_name = f"{stem}_enhanced_overlay{ext}"
+            overlay_out_path = os.path.join(job_dir, overlay_out_name)
+
+            # Build text block: headline centered at top-third
+            text_blocks = [{
+                'words': [
+                    {'text': w, 'color': '#CAFF00' if i == 0 else '#FFFFFF'}
+                    for i, w in enumerate(headline.split())
+                ],
+                'x': 0.5,
+                'y': 0.15,
+                'font_size': 48,
+                'bg_opacity': 0.6,
+            }]
+            burn_text_overlay(working_path, overlay_out_path, text_blocks)
+
+            results['overlay'] = {
+                'overlay_url': f'/clips/{job_id}/{overlay_out_name}',
+            }
+            # Final video is the overlay version
+            final_video = overlay_out_path
+            final_video_name = overlay_out_name
+        except Exception as e:
+            logger.warning(f"Auto-enhance overlay stage failed: {e}")
+            results['overlay'] = {'error': str(e)}
+            final_video = working_path
+            final_video_name = os.path.basename(working_path)
+
+        # ── Stage 3: Thumbnail (80-100%) ──
+        _update(progress=80, stage='Generating thumbnail...')
+        try:
+            thumb_name = f"{stem}_thumb_auto.png"
+            thumb_path = os.path.join(job_dir, thumb_name)
+            generate_template_thumbnail(final_video, headline, thumb_path, style='bold')
+
+            results['thumbnail'] = {
+                'thumbnail_url': f'/clips/{job_id}/{thumb_name}',
+            }
+        except Exception as e:
+            logger.warning(f"Auto-enhance thumbnail stage failed: {e}")
+            results['thumbnail'] = {'error': str(e)}
+
+        _update(
+            status='done', progress=100, stage='Complete',
+            results=results,
+            final_video_url=f'/clips/{job_id}/{final_video_name}',
+        )
+
+    except Exception as e:
+        logger.exception("Auto-enhance pipeline failed")
+        _update(status='error', error=str(e), results=results)
 
 
 @app.route('/api/clips/modulate', methods=['POST'])
@@ -1701,6 +1970,19 @@ def youtube_generate_metadata():
                          if l.strip() and not l.strip().isdigit()
                          and '-->' not in l]
             transcript_text = ' '.join(text_lines)
+
+    # If no SRT exists, auto-transcribe the clip for context
+    if not transcript_text:
+        try:
+            logger.info(f"No SRT found for {filename}, auto-transcribing for metadata context...")
+            sub_result = generate_subtitles(clip_path, model_size='base', language='en')
+            # Save the SRT for future use
+            with open(srt_path, 'w', encoding='utf-8') as f:
+                f.write(sub_result['srt'])
+            transcript_text = ' '.join(w['word'] for w in sub_result.get('words', []))
+            logger.info(f"Auto-transcribed {len(sub_result.get('words', []))} words for metadata")
+        except Exception as e:
+            logger.warning(f"Auto-transcription for metadata failed: {e}")
 
     # Get clip duration
     duration = _get_video_duration(clip_path)
@@ -2332,8 +2614,12 @@ if __name__ == '__main__':
         try:
             from waitress import serve
             print(f"  [Waitress] Serving on http://0.0.0.0:{port}")
-            serve(app, host='0.0.0.0', port=port, threads=8,
-                  channel_timeout=300, recv_bytes=65536)
+            serve(app, host="0.0.0.0", port=port, threads=8,
+                  channel_timeout=600,
+                  recv_bytes=262144,
+                  max_request_body_size=5368709120,
+                  max_request_header_size=65536,
+                  )
         except ImportError:
             logger.warning("Waitress not installed, falling back to Flask dev server")
-            app.run(host='0.0.0.0', port=port, debug=False)
+            app.run(host="0.0.0.0", port=port, debug=False)
