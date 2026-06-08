@@ -20,9 +20,9 @@ from collections import Counter
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
-from transcriber import Transcript, TranscriptSegment
+from core.transcriber import Transcript, TranscriptSegment
 from config import AnalyzerConfig
-from patterns import PatternScorer
+from core.patterns import PatternScorer
 
 logger = logging.getLogger(__name__)
 
@@ -141,22 +141,41 @@ class ContentAnalyzer:
     def _build_windows(self, segments: list, total_duration: float) -> list:
         """
         Build overlapping windows of segments.
-        Each window spans 2-6 consecutive segments to capture natural thought groups.
+        Supports both short clips (15-60s) and long clips (3-5 min).
+        Window sizes adapt to cover both use cases.
         """
         windows = []
         n = len(segments)
 
+        # Short clip windows (2-6 segments, ~10-90s)
         for window_size in [2, 3, 4, 5, 6]:
             for i in range(n - window_size + 1):
                 window_segs = segments[i:i + window_size]
                 start = window_segs[0].start
                 end = window_segs[-1].end
                 duration = end - start
-
-                # Skip windows that are too short or too long
                 if duration < 10 or duration > 90:
                     continue
+                windows.append({
+                    "segments": window_segs,
+                    "start": start,
+                    "end": end,
+                    "duration": duration,
+                    "text": " ".join(s.text for s in window_segs),
+                })
 
+        # Long clip windows (10-30 segments, ~120-360s)
+        for window_size in [10, 15, 20, 25, 30]:
+            if window_size > n:
+                continue
+            step = max(1, window_size // 3)  # overlap by ~2/3
+            for i in range(0, n - window_size + 1, step):
+                window_segs = segments[i:i + window_size]
+                start = window_segs[0].start
+                end = window_segs[-1].end
+                duration = end - start
+                if duration < 120 or duration > 360:
+                    continue
                 windows.append({
                     "segments": window_segs,
                     "start": start,

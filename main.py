@@ -29,9 +29,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import PipelineConfig, TranscriberConfig, AnalyzerConfig, ClipperConfig
-from transcriber import transcribe, Transcript
-from analyzer import ContentAnalyzer
-from clipper import VideoClipper
+from core.transcriber import transcribe, Transcript
+from core.analyzer import ContentAnalyzer
+from core.clipper import VideoClipper
 
 
 def setup_logging(verbose: bool = True):

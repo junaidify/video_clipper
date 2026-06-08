@@ -11,8 +11,13 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Optional
+
+# Suppress Whisper Triton/CUDA fallback warnings (harmless, CPU-only machines)
+warnings.filterwarnings("ignore", message=".*Triton.*falling back.*")
+warnings.filterwarnings("ignore", message=".*Failed to launch Triton kernels.*")
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +197,7 @@ def transcribe_with_whisper(video_path: str, model_size: str = "base", language:
         ]
         subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', check=True)
 
-        from transcriber import resolve_device
+        from core.transcriber import resolve_device
         model = whisper.load_model(model_size, device=resolve_device("auto"))
         # language: 'hinglish' = transcribe Hindi then romanize, 'en' = English
         whisper_lang = 'hi' if language in ('hinglish', 'hi') else 'en'

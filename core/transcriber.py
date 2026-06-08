@@ -9,9 +9,16 @@ import os
 import subprocess
 import tempfile
 import threading
+import warnings
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
+
+# Suppress harmless Whisper Triton/CUDA fallback warnings
+# These fire on every transcription when no CUDA GPU is available
+# and just say "falling back to slower CPU implementation" — not errors
+warnings.filterwarnings("ignore", message=".*Triton.*falling back.*")
+warnings.filterwarnings("ignore", message=".*Failed to launch Triton kernels.*")
 
 logger = logging.getLogger(__name__)
 

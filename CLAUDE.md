@@ -7,22 +7,48 @@ Analyzes video content via transcript, detects hook-worthy moments (key quotes, 
 
 ```
 video_clipper/
-├── app.py              # Flask web server (main entry for web UI)
-├── main.py             # CLI entry point (standalone usage)
-├── config.py           # Dataclass configs for all modules
-├── transcriber.py      # Whisper-based audio transcription
-├── analyzer.py         # NLP content analysis (TF-IDF, keywords, sentiment)
-├── llm_analyzer.py     # Optional LLM fallback (Groq, Gemini, NVIDIA)
-├── clipper.py          # FFmpeg video splitting + 9:16 scale-to-fit (blurred bg)
-├── downloader.py       # YouTube/URL download via yt-dlp
-├── patterns.py         # Creator patterns knowledge base (viral structures)
-├── .env                # API keys (GROQ, GEMINI, NVIDIA) — NOT committed
-├── .env.example        # Template for .env
-├── requirements.txt    # Python dependencies
+├── app.py                    # Flask web server (main entry for web UI)
+├── main.py                   # CLI entry point (standalone usage)
+├── config.py                 # Dataclass configs for all modules
+├── core/
+│   ├── transcriber.py        # Whisper-based audio transcription
+│   ├── analyzer.py           # NLP content analysis (TF-IDF, keywords, sentiment)
+│   ├── clipper.py            # FFmpeg video splitting + 9:16 scale-to-fit (blurred bg)
+│   ├── patterns.py           # Creator patterns knowledge base (viral structures)
+│   └── llm_analyzer.py       # Optional LLM fallback (Groq, Gemini, NVIDIA)
+├── modes/
+│   ├── manual_clipper.py     # Timestamp-based splitting
+│   ├── sequential_clipper.py # Consecutive reels generation
+│   └── full_video.py         # Full video processing mode
+├── post/
+│   ├── subtitle_generator.py # Subtitle generation
+│   ├── thumbnail_generator.py# Thumbnail generation
+│   ├── video_modulator.py    # Hash-breaking transforms
+│   └── video_editor.py       # Scene assembly
+├── media/
+│   ├── downloader.py         # YouTube/URL download via yt-dlp
+│   ├── library.py            # Video library management
+│   ├── audio_mixer.py        # Audio mixing
+│   ├── music_mixer.py        # Background music
+│   └── tts_engine.py         # Text-to-speech
+├── ai/
+│   ├── commentary.py         # AI narration scripts
+│   ├── script_generator.py   # Script generation
+│   ├── trend_scout.py        # Trending topics
+│   └── visual_engine.py      # Stock footage
+├── publish/
+│   ├── youtube_uploader.py   # YouTube upload
+│   └── content_factory.py    # Orchestrator
+├── training/
+│   └── trainer.py            # Pattern training
+├── tests/                    # Test suite
 ├── templates/
-│   └── index.html      # Web UI frontend
-├── uploads/            # Temp storage for uploaded/downloaded videos
-└── clips_output/       # Generated clips organized by job ID
+│   └── index.html            # Web UI frontend
+├── .env                      # API keys — NOT committed
+├── .env.example              # Template for .env
+├── requirements.txt          # Python dependencies
+├── uploads/                  # Temp storage for uploaded/downloaded videos
+└── clips_output/             # Generated clips organized by job ID
 ```
 
 ## Pipeline (3 stages)
