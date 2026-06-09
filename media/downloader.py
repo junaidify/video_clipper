@@ -76,7 +76,7 @@ PLATFORM_HINTS = {
 # 'mediaconnect' bypasses most bot detection (including Made-for-Kids COPPA restrictions).
 # 'android' uses the mobile API which has looser restrictions.
 # 'web' is the default but triggers bot detection on datacenter IPs and kids content.
-_YT_PLAYER_CLIENTS = ['mediaconnect', 'android', 'web']
+_YT_PLAYER_CLIENTS = ['mediaconnect', 'android', 'ios', 'mweb', 'web']
 
 # Platforms that use DRM — will never work
 # NOTE: use domain names only (not URL paths) — _extract_domain returns hostname
@@ -715,9 +715,11 @@ def download_video(url: str, output_dir: str,
                         break
 
                 # Don't retry on permanent errors
-                permanent = ['DRM', 'private', 'not available', 'copyright',
+                permanent = ['DRM', 'private', 'not available',
                              'removed', 'terminated', 'does not exist',
                              'Unsupported URL', 'No video formats']
+                # NOTE: 'copyright' intentionally excluded — yt-dlp often includes
+                # 'copyright' in errors for videos that ARE downloadable with retries
                 if any(kw.lower() in last_error.lower() for kw in permanent):
                     break
                 if attempt < retries:

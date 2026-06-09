@@ -227,8 +227,8 @@ def modulate_video(video_path: str,
         # Encoding settings — re-encode to ensure pixel changes are baked in
         cmd.extend([
             "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "18",           # High quality
+            "-preset", "veryfast",      # fast encode for large files
+            "-crf", "23",              # good quality, much faster           # High quality
             "-c:a", "aac",
             "-b:a", "192k",
             "-ar", "48000",
@@ -240,7 +240,7 @@ def modulate_video(video_path: str,
         logger.info(f"Modulating video: {' → '.join(transforms_applied)}")
         result = subprocess.run(
             cmd, capture_output=True, encoding='utf-8',
-            errors='replace', timeout=300
+            errors='replace', timeout=900  # 15 min for large files
         )
 
         if result.returncode != 0:

@@ -1685,6 +1685,16 @@
                 </div>
                 <div class="card">
                     <div class="card-header"><span class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> SETTINGS</div>
+                    <div style="display:flex;gap:8px;margin-bottom:14px">
+                        <button class="btn btn-primary" id="mode-shorts" onclick="setClipMode('shorts')" style="flex:1;font-size:0.82rem;padding:10px">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><rect x="7" y="2" width="10" height="20" rx="2"/></svg>
+                            Shorts (15-60s)
+                        </button>
+                        <button class="btn btn-secondary" id="mode-long" onclick="setClipMode('long')" style="flex:1;font-size:0.82rem;padding:10px">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+                            Long Clips (3-5 min)
+                        </button>
+                    </div>
                     <div class="settings-grid" style="grid-template-columns:1fr 1fr">
                         <div class="form-group"><label>WHISPER MODEL</label><select id="s-model"><option value="tiny">Tiny</option><option value="base" selected>Base</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
                         <div class="form-group"><label>MAX CLIPS</label><input type="number" id="s-max-clips" value="10" min="1" max="50"></div>
@@ -1865,6 +1875,7 @@
             </div>
         </div>
 
+        <!-- ENHANCED PANEL -->
         <!-- SETTINGS PANEL -->
         <div class="panel" id="panel-settings">
             <div class="panel-hero reveal">
@@ -2703,13 +2714,49 @@ async function addVideoFromFile() {
     const file = document.getElementById('lib-file').files[0];
     if (!file) return showErr('lib-error', 'Select a file');
     hideErr('lib-error');
-    showLibProgress('Uploading...', 30);
+
+    const sizeMB = (file.size / (1024*1024)).toFixed(0);
+    showLibProgress(`Uploading ${sizeMB} MB...`, 10);
+
     const form = new FormData();
     form.append('video', file);
     try {
-        const res = await fetch('/api/library/add', {method:'POST', body: form});
-        const data = await res.json();
+        // Use XMLHttpRequest for upload progress on large files
+        const data = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/library/add');
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 55) + 5;
+                    const loadedMB = (e.loaded / (1024*1024)).toFixed(0);
+                    showLibProgress(`Uploading: ${loadedMB} / ${sizeMB} MB`, pct);
+                }
+            };
+            xhr.onload = () => {
+                if (xhr.status === 413) {
+                    reject(new Error('File too large — max 5GB'));
+                    return;
+                }
+                try { resolve(JSON.parse(xhr.responseText)); }
+                catch(e) { reject(new Error(`Server error (HTTP ${xhr.status})`)); }
+            };
+            xhr.onerror = () => reject(new Error('Upload failed — check file size and network'));
+            xhr.ontimeout = () => reject(new Error('Upload timed out'));
+            xhr.timeout = 600000; // 10 min timeout for large files
+            xhr.send(form);
+        });
+
         if (data.error) { showErr('lib-error', data.error); hideLibProgress(); return; }
+
+        // If server returned a job_id, the file is being processed async
+        if (data.job_id) {
+            showLibProgress('Processing large file...', 60);
+            _currentLibJobId = data.job_id;
+            _libPollTimer = setInterval(pollLibJob, 1500);
+            return;
+        }
+
+        // Small file: completed synchronously
         hideLibProgress();
         document.getElementById('lib-file-name').textContent = '';
         loadLibrary();
@@ -2784,6 +2831,34 @@ function hideLibProgress() {
 }
 
 // Smart Clips
+function setClipMode(mode) {
+    const shortsBtn = document.getElementById('mode-shorts');
+    const longBtn = document.getElementById('mode-long');
+    const minDur = document.getElementById('s-min-dur');
+    const maxDur = document.getElementById('s-max-dur');
+    const cropCb = document.getElementById('s-crop');
+    const scoreInput = document.getElementById('s-min-score');
+    const maxClips = document.getElementById('s-max-clips');
+
+    if (mode === 'long') {
+        shortsBtn.className = 'btn btn-secondary';
+        longBtn.className = 'btn btn-primary';
+        minDur.value = 180;
+        maxDur.value = 300;
+        cropCb.checked = false; // long clips stay landscape
+        scoreInput.value = 0.3; // lower threshold for longer segments
+        maxClips.value = 5;
+    } else {
+        shortsBtn.className = 'btn btn-primary';
+        longBtn.className = 'btn btn-secondary';
+        minDur.value = 15;
+        maxDur.value = 60;
+        cropCb.checked = true; // shorts = 9:16
+        scoreInput.value = 0.4;
+        maxClips.value = 10;
+    }
+}
+
 async function startSmartClip() {
     const videoId = document.getElementById('smart-video-select').value;
     if (!videoId) return showErr('smart-error', 'Select a video first');
@@ -2796,6 +2871,7 @@ async function startSmartClip() {
     form.append('min_duration', document.getElementById('s-min-dur').value);
     form.append('max_duration', document.getElementById('s-max-dur').value);
     form.append('crop_vertical', document.getElementById('s-crop').checked);
+    form.append('anti_copyright', 'true');
     document.getElementById('btn-smart').disabled = true;
     document.getElementById('smart-progress').style.display = 'block';
     document.getElementById('smart-results').style.display = 'none';
@@ -3181,7 +3257,7 @@ async function openFolder(idx) {
                             <span class="occ-size">${f.size_mb} MB</span>
                             <a class="occ-dl" href="${f.url}" download="${escHtml(f.filename)}" title="Download"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
                         </div>
-                        <div style="padding:6px 14px 14px;display:flex;gap:8px;flex-wrap:wrap">
+                        <div style="padding:6px 14px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                             <button class="clip-act-btn" onclick="window.open('/editor?job=${jobId}&file=${encodeURIComponent(f.filename)}','_blank')" style="font-size:0.72rem;padding:6px 12px">
                                 <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="14" x2="23" y2="14"/></svg>
                                 Subtitles
@@ -3205,6 +3281,10 @@ async function openFolder(idx) {
                             <button class="clip-act-btn" onclick="openModulateModal('${jobId}','${f.filename}',this)" style="font-size:0.72rem;padding:6px 12px;color:#f59e0b;border-color:rgba(245,158,11,0.3)" title="Pixel Modulation">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                                 Modulate
+                            </button>
+                            <button class="clip-act-btn" onclick="openGenerateFinalModal('${jobId}','${f.filename}',this)" style="font-size:0.72rem;padding:6px 14px;color:var(--lime);border-color:var(--lime);font-weight:700" title="Generate final video with subtitles + text + thumbnail in one pass">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                Generate
                             </button>
                         </div>
                     </div>
@@ -3263,6 +3343,10 @@ function clipActionsHtml(jobId, filename) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
             Modulate
         </button>
+        <button class="clip-act-btn" onclick="openGenerateFinalModal('${jobId}','${filename}',this)" style="color:var(--lime);border-color:var(--lime);font-weight:700" title="Generate final video">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Generate
+        </button>
         <button class="clip-act-btn" onclick="deleteClipFile('${jobId}','${filename}',this)" style="color:#ef4444;border-color:rgba(220,38,38,0.3)" title="Delete clip">
             <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             Delete
@@ -3283,6 +3367,117 @@ function clipCardHtml(c, jobId) {
             ${clipActionsHtml(jobId, c.filename)}
         </div>
     </div>`;
+}
+
+// ═══════════════════════════════════════
+//  POST-PROCESSING HANDLERS
+// ═══════════════════════════════════════
+
+function _btnLoading(btn, text) {
+    btn.classList.add('loading');
+    btn.dataset.origHtml = btn.innerHTML;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/></svg> ${text}`;
+}
+function _btnDone(btn, text, color) {
+    btn.classList.remove('loading');
+    btn.innerHTML = `<svg viewBox="0 0 24 24" stroke="${color||'var(--green)'}" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> ${text}`;
+    btn.style.borderColor = color || 'var(--green)';
+    btn.style.color = color || 'var(--green)';
+}
+function _btnReset(btn) {
+    btn.classList.remove('loading');
+    btn.innerHTML = btn.dataset.origHtml || 'Retry';
+}
+
+// ── Subtitles: one-click auto-burn ──
+async function oneClickSubtitle(jobId, filename, btn) {
+    if (btn.classList.contains('loading')) return;
+    _btnLoading(btn, 'Loading Whisper...');
+    // Show elapsed timer so user knows it's working
+    const startTime = Date.now();
+    const timer = setInterval(() => {
+        const secs = Math.floor((Date.now() - startTime) / 1000);
+        if (btn.classList.contains('loading')) {
+            const stage = secs < 15 ? 'Loading model...' : secs < 60 ? 'Transcribing...' : 'Burning subs...';
+            btn.innerHTML = `<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/></svg> ${stage} (${secs}s)`;
+        }
+    }, 1000);
+    try {
+        const res = await fetch('/api/clips/subtitle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: jobId, filename: filename, model_size: 'base'})
+        });
+        clearInterval(timer);
+        if (!res.ok) {
+            const errText = await res.text();
+            alert('Subtitle error (HTTP ' + res.status + '): ' + errText);
+            _btnReset(btn);
+            return;
+        }
+        const data = await res.json();
+        if (data.error) { alert('Subtitle error: ' + data.error); _btnReset(btn); return; }
+        _btnDone(btn, 'Subtitled');
+    } catch(e) { clearInterval(timer); alert('Subtitle failed: ' + e.message); _btnReset(btn); }
+}
+
+// ── Text Overlay: prompt for text, then one-click burn ──
+function oneClickOverlay(jobId, filename, btn) {
+    if (btn.classList.contains('loading')) return;
+    // Show inline text input
+    const parent = btn.parentElement;
+    if (parent.querySelector('.overlay-inline-row')) return; // already open
+    const row = document.createElement('div');
+    row.className = 'overlay-inline-row';
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;width:100%;margin-top:6px';
+    row.innerHTML = `
+        <input type="text" placeholder="Enter overlay text..." style="flex:1;background:rgba(202,255,0,0.08);border:1px solid rgba(202,255,0,0.3);border-radius:8px;padding:5px 10px;color:var(--lime);font-size:0.72rem;font-family:'JetBrains Mono',monospace;outline:none" />
+        <button class="clip-act-btn" style="font-size:0.72rem;padding:5px 12px;color:#111;background:var(--lime);border-color:var(--lime);border-radius:8px;white-space:nowrap">GO</button>
+        <button class="clip-act-btn" style="font-size:0.72rem;padding:5px 8px;color:var(--text-dim);border-color:transparent">✕</button>
+    `;
+    parent.appendChild(row);
+    const input = row.querySelector('input');
+    input.focus();
+    row.querySelector('button:last-child').onclick = () => row.remove();
+    const goBtn = row.querySelectorAll('button')[0];
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') goBtn.click(); });
+    goBtn.onclick = async () => {
+        const text = input.value.trim();
+        if (!text) { input.style.borderColor = '#ef4444'; return; }
+        row.remove();
+        _btnLoading(btn, 'Burning text...');
+        try {
+            const words = text.split(/\s+/);
+            const textBlocks = [{
+                words: words.map((w,i) => ({text: w, color: i === 0 ? '#CAFF00' : '#FFFFFF'})),
+                x: 0.5, y: 0.15, font_size: 48, bg_opacity: 0.6
+            }];
+            const res = await fetch('/api/clips/overlay', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({job_id: jobId, filename: filename, text_blocks: textBlocks})
+            });
+            const data = await res.json();
+            if (data.error) { alert('Overlay error: ' + data.error); _btnReset(btn); return; }
+            _btnDone(btn, 'Overlaid');
+        } catch(e) { alert('Overlay failed: ' + e.message); _btnReset(btn); }
+    };
+}
+
+// ── Thumbnail: one-click auto-generate ──
+async function oneClickThumbnail(jobId, filename, btn) {
+    if (btn.classList.contains('loading')) return;
+    _btnLoading(btn, 'Generating...');
+    try {
+        const res = await fetch('/api/clips/thumbnail', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: jobId, filename: filename, title: filename.replace(/\.[^.]+$/,''), mode: 'template', style: 'bold'})
+        });
+        const data = await res.json();
+        if (data.error) { alert('Thumbnail error: ' + data.error); _btnReset(btn); return; }
+        _btnDone(btn, 'Generated');
+    } catch(e) { alert('Thumbnail failed: ' + e.message); _btnReset(btn); }
 }
 
 // ═══════════════════════════════════════
@@ -3619,6 +3814,143 @@ async function uploadCookieFile(input) {
         input.value = '';
         checkCookieStatus();
     } catch(e) { showErr('cookie-error', e.message); }
+}
+
+// ═══════════════════════════════════════
+//  GENERATE FINAL VIDEO (preview-then-generate)
+// ═══════════════════════════════════════
+function openGenerateFinalModal(jobId, filename, btn) {
+    // Build and show a modal where user toggles subtitles/overlay/thumbnail, then clicks Generate
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)';
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid rgba(202,255,0,0.12);border-radius:16px;padding:28px 32px;max-width:480px;width:90%">
+        <h3 style="color:var(--lime);font-size:1.1rem;margin:0 0 6px">Generate Final Video</h3>
+        <p style="color:var(--text-dim);font-size:0.78rem;margin:0 0 18px">Select which enhancements to bake into <strong style="color:var(--text-bright)">${escHtml(filename)}</strong>. One final output will be generated.</p>
+
+        <label style="display:flex;align-items:center;gap:10px;margin-bottom:14px;cursor:pointer">
+            <input type="checkbox" id="gf-subs" checked style="accent-color:var(--lime);width:18px;height:18px">
+            <span style="color:var(--text-bright);font-size:0.85rem">Burn Subtitles</span>
+        </label>
+
+        <label style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer">
+            <input type="checkbox" id="gf-overlay" style="accent-color:var(--lime);width:18px;height:18px">
+            <span style="color:var(--text-bright);font-size:0.85rem">Text Overlay</span>
+        </label>
+        <input type="text" id="gf-overlay-text" placeholder="Overlay headline (e.g. WATCH THIS)" maxlength="60"
+            style="width:100%;margin:0 0 14px 28px;padding:8px 12px;background:var(--surface);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text-bright);font-size:0.82rem;box-sizing:border-box;width:calc(100% - 28px)">
+
+        <label style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer">
+            <input type="checkbox" id="gf-thumb" checked style="accent-color:var(--lime);width:18px;height:18px">
+            <span style="color:var(--text-bright);font-size:0.85rem">Generate Thumbnail</span>
+        </label>
+        <input type="text" id="gf-thumb-title" placeholder="Thumbnail title" maxlength="50"
+            style="width:100%;margin:0 0 20px 28px;padding:8px 12px;background:var(--surface);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text-bright);font-size:0.82rem;box-sizing:border-box;width:calc(100% - 28px)">
+
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button onclick="this.closest('div[style*=fixed]').remove()" class="clip-act-btn" style="padding:8px 18px">Cancel</button>
+            <button id="gf-go-btn" onclick="_runGenerateFinal('${jobId}','${filename}',this)" class="clip-act-btn" style="padding:8px 22px;color:var(--lime);border-color:var(--lime);font-weight:700">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Generate
+            </button>
+        </div>
+        <div id="gf-progress" style="display:none;margin-top:16px">
+            <div style="height:4px;background:var(--surface);border-radius:4px;overflow:hidden">
+                <div id="gf-bar" style="height:100%;background:var(--lime);width:0%;transition:width 0.4s"></div>
+            </div>
+            <div id="gf-msg" style="font-size:0.72rem;color:var(--text-dim);margin-top:6px;text-align:center"></div>
+        </div>
+        <div id="gf-result" style="display:none;margin-top:16px;padding:12px;background:rgba(202,255,0,0.06);border-radius:10px"></div>
+    </div>`;
+    document.body.appendChild(modal);
+}
+
+async function _runGenerateFinal(jobId, filename, btn) {
+    const subs = document.getElementById('gf-subs').checked;
+    const overlay = document.getElementById('gf-overlay').checked;
+    const overlayText = document.getElementById('gf-overlay-text').value.trim();
+    const thumb = document.getElementById('gf-thumb').checked;
+    const thumbTitle = document.getElementById('gf-thumb-title').value.trim();
+
+    if (!subs && !overlay && !thumb) { alert('Select at least one enhancement'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/></svg> Generating...';
+    document.getElementById('gf-progress').style.display = 'block';
+
+    // Build overlay text blocks if enabled
+    const overlayBlocks = [];
+    if (overlay && overlayText) {
+        const words = overlayText.split(/\s+/).map((w, i) => ({
+            text: w, color: i === 0 ? '#CAFF00' : '#FFFFFF'
+        }));
+        overlayBlocks.push({ words, x: 0.5, y: 0.15, font_size: 48, bg_opacity: 0.6 });
+    }
+
+    try {
+        const res = await fetch('/api/clips/generate-final', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                job_id: jobId, filename,
+                enable_subtitles: subs,
+                enable_overlay: overlay && !!overlayText,
+                overlay_text_blocks: overlayBlocks,
+                enable_thumbnail: thumb,
+                thumbnail_title: thumbTitle || filename.replace(/\.[^.]+$/, ''),
+            })
+        });
+        const data = await res.json();
+        if (data.error) { alert(data.error); btn.disabled = false; btn.textContent = 'Generate'; return; }
+
+        const genId = data.generate_id;
+        const bar = document.getElementById('gf-bar');
+        const msg = document.getElementById('gf-msg');
+        const resultDiv = document.getElementById('gf-result');
+
+        // Poll status
+        const poll = setInterval(async () => {
+            try {
+                const sr = await fetch('/api/clips/generate-final/' + genId);
+                const sd = await sr.json();
+                bar.style.width = (sd.progress || 0) + '%';
+                msg.textContent = sd.stage || '';
+
+                if (sd.status === 'done') {
+                    clearInterval(poll);
+                    btn.innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Done!';
+                    btn.style.color = '#22c55e';
+
+                    let html = '<div style="font-size:0.82rem;color:var(--text-bright);font-weight:600;margin-bottom:8px">Final video ready!</div>';
+                    if (sd.final_video_url) {
+                        html += '<div style="margin-bottom:6px"><a href="' + sd.final_video_url + '" download class="clip-act-btn" style="color:var(--lime);border-color:var(--lime);padding:6px 14px;font-size:0.78rem">Download Final Video</a></div>';
+                    }
+                    if (sd.results?.thumbnail?.thumbnail_url) {
+                        html += '<div><a href="' + sd.results.thumbnail.thumbnail_url + '" download class="clip-act-btn" style="padding:6px 14px;font-size:0.78rem">Download Thumbnail</a></div>';
+                    }
+                    if (sd.results?.subtitles?.srt_url) {
+                        html += '<div style="margin-top:6px"><a href="' + sd.results.subtitles.srt_url + '" download class="clip-act-btn" style="padding:4px 10px;font-size:0.72rem">.SRT File</a></div>';
+                    }
+                    if (sd.steps_applied) {
+                        html += '<div style="font-size:0.7rem;color:var(--text-dim);margin-top:8px">Steps: ' + sd.steps_applied.join(' → ') + '</div>';
+                    }
+                    resultDiv.innerHTML = html;
+                    resultDiv.style.display = 'block';
+                } else if (sd.status === 'error') {
+                    clearInterval(poll);
+                    alert('Generation failed: ' + (sd.error || 'Unknown error'));
+                    btn.disabled = false;
+                    btn.textContent = 'Generate';
+                }
+            } catch(e) { /* ignore poll errors */ }
+        }, 1500);
+
+    } catch(e) {
+        alert('Generate failed: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Generate';
+    }
 }
 
 // ═══════════════════════════════════════
@@ -4514,6 +4846,10 @@ async function deleteClipFile(jobId, filename, btn) {
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ job_id: jobId, filename })
         });
+        if (!res.ok && res.headers.get('content-type')?.indexOf('json') === -1) {
+            alert('Delete failed: server returned HTTP ' + res.status);
+            return;
+        }
         const data = await res.json();
         if (data.success) {
             const card = btn.closest('.output-clip-card') || btn.closest('.clip-card');

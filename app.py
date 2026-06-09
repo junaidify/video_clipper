@@ -23,32 +23,36 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import PipelineConfig, TranscriberConfig, AnalyzerConfig, ClipperConfig
-from transcriber import transcribe
-from analyzer import ContentAnalyzer, ClipCandidate
-from clipper import VideoClipper
-from downloader import (is_valid_url, is_drm_platform, download_video,
+from core.transcriber import transcribe
+from core.analyzer import ContentAnalyzer, ClipCandidate
+from core.clipper import VideoClipper
+from media.downloader import (is_valid_url, is_drm_platform, download_video,
                         get_video_info, get_supported_platforms,
                         _get_cookies_config, _get_cookies_config_with_fallback,
                         _is_running_locally, _detect_browser)
-from llm_analyzer import analyze_with_llm, LLMConfig
-from library import VideoLibrary
-from manual_clipper import TimestampClip, parse_timestamp, split_by_timestamps
-from sequential_clipper import SequentialConfig, split_sequentially
-from trainer import PatternTrainer
-from subtitle_generator import generate_subtitles, burn_subtitles, burn_text_overlay
-from thumbnail_generator import generate_template_thumbnail, generate_ai_thumbnail, pick_best_frame
-import youtube_uploader
-from content_factory import (
+from core.llm_analyzer import analyze_with_llm, LLMConfig
+from media.library import VideoLibrary
+from modes.manual_clipper import TimestampClip, parse_timestamp, split_by_timestamps
+from modes.sequential_clipper import SequentialConfig, split_sequentially
+from training.trainer import PatternTrainer
+from post.subtitle_generator import generate_subtitles, burn_subtitles, burn_text_overlay
+from post.thumbnail_generator import generate_template_thumbnail, generate_ai_thumbnail, pick_best_frame
+import publish.youtube_uploader as youtube_uploader
+from publish.content_factory import (
     start_generation as factory_start, get_job as factory_get_job,
     list_jobs as factory_list_jobs, cleanup_job as factory_cleanup_job
 )
-from trend_scout import scout_trending, get_available_categories as get_trend_categories
-from script_generator import get_style_presets as get_script_styles
-from music_mixer import get_mood_options
+from ai.trend_scout import scout_trending, get_available_categories as get_trend_categories
+from ai.script_generator import get_style_presets as get_script_styles
+from media.music_mixer import get_mood_options
+from modes.full_video import FullVideoConfig, process_full_video
+from modes.engagement_clipper import (
+    EngagementConfig, EngagementAnalyzer, analyze_with_llm_for_engagement
+)
 
 # ─── App Setup ───
 app = Flask(__name__, static_folder='static', template_folder='templates')
-app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max upload
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 * 1024  # 5GB max upload
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 app.config['CLIPS_FOLDER'] = os.path.join(os.path.dirname(__file__), 'clips_output')
 app.config['LIBRARY_FOLDER'] = os.path.join(os.path.dirname(__file__), 'video_library')
@@ -75,6 +79,27 @@ logger = logging.getLogger(__name__)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# Global error handlers — ensure API routes always return JSON, not HTML
+@app.errorhandler(404)
+def not_found_error(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Not found', 'path': request.path}), 404
+    return e
+
+@app.errorhandler(500)
+def internal_error(e):
+    if request.path.startswith('/api/'):
+        logger.exception("Internal server error on %s", request.path)
+        return jsonify({'error': 'Internal server error'}), 500
+    return e
+
+@app.errorhandler(405)
+def method_not_allowed(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Method not allowed'}), 405
+    return e
 
 
 import re
@@ -185,7 +210,7 @@ def library_add():
         thread.start()
         return jsonify({'success': True, 'job_id': job_id})
 
-    # ── File upload path (synchronous — fast enough) ──
+    # ── File upload path ──
     if 'video' in request.files:
         file = request.files['video']
         if file and file.filename and allowed_file(file.filename):
@@ -194,6 +219,28 @@ def library_add():
             tmp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"lib_{uuid.uuid4().hex[:8]}_{filename}")
             file.save(tmp_path)
 
+            file_size = os.path.getsize(tmp_path) if os.path.isfile(tmp_path) else 0
+
+            # Large files (>50MB): process async to avoid browser timeout
+            if file_size > 50 * 1024 * 1024:
+                job_id = str(uuid.uuid4())[:8]
+                jobs[job_id] = {
+                    'status': 'processing',
+                    'progress': 60,
+                    'message': f'Processing upload ({file_size / (1024*1024):.0f} MB)...',
+                    'error': None,
+                    'video': None,
+                    'started_at': time.time(),
+                }
+                thread = threading.Thread(
+                    target=_library_upload_job,
+                    args=(job_id, tmp_path, filename),
+                    daemon=True,
+                )
+                thread.start()
+                return jsonify({'success': True, 'job_id': job_id})
+
+            # Small files: synchronous (fast)
             duration = _get_video_duration(tmp_path)
             title = Path(filename).stem
             entry = video_library.add_video(
@@ -210,6 +257,42 @@ def library_add():
             return jsonify({'success': True, 'video': entry.to_dict()})
 
     return jsonify({'error': 'No valid video file or URL provided'}), 400
+
+
+def _library_upload_job(job_id: str, tmp_path: str, filename: str):
+    """Background job: process large uploaded file into library."""
+    try:
+        jobs[job_id]['message'] = 'Analyzing video...'
+        jobs[job_id]['progress'] = 70
+
+        duration = _get_video_duration(tmp_path)
+
+        jobs[job_id]['message'] = 'Saving to library...'
+        jobs[job_id]['progress'] = 85
+
+        title = Path(filename).stem
+        entry = video_library.add_video(
+            source_path=tmp_path,
+            title=title,
+            source='upload',
+            duration=duration,
+        )
+
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+        jobs[job_id]['video'] = entry.to_dict()
+        jobs[job_id]['progress'] = 100
+        jobs[job_id]['message'] = 'Added to library!'
+        jobs[job_id]['status'] = 'completed'
+
+    except Exception as e:
+        logger.exception("Upload processing failed")
+        jobs[job_id]['status'] = 'error'
+        jobs[job_id]['error'] = str(e)
+        jobs[job_id]['progress'] = 0
 
 
 def _library_download_job(job_id: str, url: str):
@@ -397,6 +480,7 @@ def smart_clip():
         'max_duration': int(request.form.get('max_duration', 60)),
         'crop_vertical': request.form.get('crop_vertical', 'true') == 'true',
         'use_llm': request.form.get('use_llm', 'false') == 'true',
+        'anti_copyright': True,  # always apply anti-copyright transforms
     }
 
     job_id = str(uuid.uuid4())[:8]
@@ -500,6 +584,7 @@ def _smart_clip_job(job_id, video_path, video_id, output_dir, settings):
             min_clip_duration=settings['min_duration'],
             max_clip_duration=settings['max_duration'],
             crop_vertical=settings['crop_vertical'],
+            anti_copyright=settings.get('anti_copyright', True),
         )
         clipper = VideoClipper(clipper_config)
 
@@ -917,9 +1002,11 @@ def add_subtitles():
     if not os.path.isfile(clip_path):
         return jsonify({'error': 'Clip file not found'}), 404
 
+    language = data.get('language', None)  # "en", "hi", or None for auto
+
     try:
         # Generate subtitles
-        result = generate_subtitles(clip_path, model_size=model_size)
+        result = generate_subtitles(clip_path, model_size=model_size, language=language)
 
         # Build output filename
         stem = Path(filename).stem
@@ -1145,10 +1232,364 @@ def generate_thumbnail():
         return jsonify({'error': str(e)}), 500
 
 
+# ─── Generate Final Video (preview-then-generate flow) ───
+_generate_jobs = {}
+_generate_lock = threading.Lock()
+
+
+@app.route('/api/clips/generate-final', methods=['POST'])
+def generate_final_clip():
+    """
+    Generate a final video from a clip by applying selected enhancements
+    in one pass: subtitles + text overlay + thumbnail.
+    User previews each individually, then clicks Generate to bake all into one output.
+    """
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+
+    # Enhancement options (all optional)
+    enable_subtitles = data.get('enable_subtitles', False)
+    subtitle_model = data.get('subtitle_model', 'base')
+    subtitle_language = data.get('subtitle_language', None)
+    enable_overlay = data.get('enable_overlay', False)
+    overlay_text_blocks = data.get('overlay_text_blocks', [])
+    enable_thumbnail = data.get('enable_thumbnail', False)
+    thumbnail_title = data.get('thumbnail_title', '')
+    thumbnail_style = data.get('thumbnail_style', 'bold')
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_path = os.path.join(_find_job_dir(job_id), filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    gen_id = str(uuid.uuid4())[:8]
+    gen_job = {
+        'id': gen_id,
+        'status': 'starting',
+        'progress': 0,
+        'stage': 'Initializing...',
+        'results': {},
+        'error': None,
+    }
+    with _generate_lock:
+        _generate_jobs[gen_id] = gen_job
+
+    thread = threading.Thread(
+        target=_run_generate_final,
+        args=(gen_id, job_id, filename, clip_path,
+              enable_subtitles, subtitle_model, subtitle_language,
+              enable_overlay, overlay_text_blocks,
+              enable_thumbnail, thumbnail_title, thumbnail_style),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({'generate_id': gen_id})
+
+
+@app.route('/api/clips/generate-final/<gen_id>', methods=['GET'])
+def generate_final_status(gen_id):
+    """Poll generate-final job status."""
+    with _generate_lock:
+        job = _generate_jobs.get(gen_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
+
+
+def _run_generate_final(gen_id, job_id, filename, clip_path,
+                        enable_subtitles, subtitle_model, subtitle_language,
+                        enable_overlay, overlay_text_blocks,
+                        enable_thumbnail, thumbnail_title, thumbnail_style):
+    """Background thread: apply all selected enhancements into one final video."""
+    def _update(**kwargs):
+        with _generate_lock:
+            _generate_jobs[gen_id].update(kwargs)
+
+    stem = Path(filename).stem
+    ext = Path(filename).suffix
+    job_dir = _find_job_dir(job_id)
+    results = {}
+    working_path = clip_path
+    steps_applied = []
+
+    try:
+        total_steps = sum([enable_subtitles, enable_overlay, enable_thumbnail])
+        if total_steps == 0:
+            _update(status='done', progress=100, stage='Nothing to generate',
+                    results={'info': 'No enhancements selected'})
+            return
+
+        step_pct = 90 // max(total_steps, 1)
+        current_pct = 5
+
+        # ── Subtitles ──
+        if enable_subtitles:
+            _update(status='processing', progress=current_pct, stage='Generating subtitles...')
+            try:
+                sub_result = generate_subtitles(working_path, model_size=subtitle_model,
+                                                language=subtitle_language)
+                srt_name = f"{stem}.srt"
+                srt_path = os.path.join(job_dir, srt_name)
+                with open(srt_path, 'w', encoding='utf-8') as f:
+                    f.write(sub_result['srt'])
+
+                sub_out_name = f"{stem}_final{ext}"
+                sub_out_path = os.path.join(job_dir, sub_out_name)
+                burn_subtitles(working_path, sub_result['srt'], sub_out_path)
+
+                results['subtitles'] = {
+                    'srt_url': f'/clips/{job_id}/{srt_name}',
+                    'word_count': len(sub_result.get('words', [])),
+                }
+                working_path = sub_out_path
+                steps_applied.append('subtitles')
+            except Exception as e:
+                logger.warning(f"Generate-final subtitle stage failed: {e}")
+                results['subtitles'] = {'error': str(e)}
+
+            current_pct += step_pct
+
+        # ── Text Overlay ──
+        if enable_overlay and overlay_text_blocks:
+            _update(progress=current_pct, stage='Burning text overlay...')
+            try:
+                overlay_out_name = f"{stem}_final_overlay{ext}"
+                overlay_out_path = os.path.join(job_dir, overlay_out_name)
+                burn_text_overlay(working_path, overlay_out_path, overlay_text_blocks)
+
+                results['overlay'] = {'overlay_url': f'/clips/{job_id}/{overlay_out_name}'}
+                working_path = overlay_out_path
+                steps_applied.append('text_overlay')
+            except Exception as e:
+                logger.warning(f"Generate-final overlay stage failed: {e}")
+                results['overlay'] = {'error': str(e)}
+
+            current_pct += step_pct
+
+        # ── Thumbnail ──
+        if enable_thumbnail:
+            _update(progress=current_pct, stage='Generating thumbnail...')
+            try:
+                title = thumbnail_title or stem
+                thumb_name = f"{stem}_final_thumb.png"
+                thumb_path = os.path.join(job_dir, thumb_name)
+                generate_template_thumbnail(working_path, title, thumb_path,
+                                            style=thumbnail_style)
+                results['thumbnail'] = {'thumbnail_url': f'/clips/{job_id}/{thumb_name}'}
+                steps_applied.append('thumbnail')
+            except Exception as e:
+                logger.warning(f"Generate-final thumbnail stage failed: {e}")
+                results['thumbnail'] = {'error': str(e)}
+
+        final_video_name = os.path.basename(working_path)
+        _update(
+            status='done', progress=100, stage='Complete',
+            results=results,
+            final_video_url=f'/clips/{job_id}/{final_video_name}',
+            steps_applied=steps_applied,
+        )
+
+    except Exception as e:
+        logger.exception("Generate-final pipeline failed")
+        _update(status='error', error=str(e), results=results)
+
+
+# ─── Auto-Enhance (one-click: subtitles + overlay + thumbnail) ───
+_enhance_jobs = {}
+_enhance_lock = threading.Lock()
+
+
+@app.route('/api/clips/suggest-headline', methods=['POST'])
+def suggest_headline():
+    """Use LLM to suggest a short hook headline for a clip."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    hook_text = data.get('hook_text', '')
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    # If hook_text provided from clip metadata, use it; otherwise try transcript
+    if not hook_text:
+        clip_path = os.path.join(_find_job_dir(job_id), filename)
+        if os.path.isfile(clip_path):
+            try:
+                result = generate_subtitles(clip_path, model_size='base')
+                hook_text = ' '.join(w['word'] for w in result.get('words', []))[:300]
+            except Exception:
+                hook_text = ''
+
+    if not hook_text:
+        return jsonify({'headline': 'WATCH THIS', 'source': 'fallback'})
+
+    # Try LLM to generate a punchy 3-5 word headline
+    prompt = f"Generate ONE short punchy video headline (3-5 words, ALL CAPS, no quotes, no hashtags) for this clip transcript:\n\n{hook_text[:500]}\n\nHeadline:"
+    try:
+        llm_cfg = LLMConfig()
+        headline = analyze_with_llm(prompt, llm_cfg)
+        # Clean up: take first line, strip quotes
+        headline = headline.strip().split('\n')[0].strip('"\'').upper()
+        if len(headline) > 50:
+            headline = headline[:50]
+        if not headline:
+            headline = 'WATCH THIS'
+        return jsonify({'headline': headline, 'source': 'llm'})
+    except Exception as e:
+        logger.warning(f"LLM headline suggestion failed: {e}")
+        # Fallback: take first few words of transcript
+        words = hook_text.split()[:5]
+        return jsonify({'headline': ' '.join(words).upper(), 'source': 'transcript'})
+
+
+@app.route('/api/clips/auto-enhance', methods=['POST'])
+def auto_enhance_clip():
+    """Start async auto-enhance: subtitles + text overlay + thumbnail."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id', '')
+    filename = data.get('filename', '')
+    headline = data.get('headline', 'WATCH THIS')
+
+    if not job_id or not filename:
+        return jsonify({'error': 'job_id and filename required'}), 400
+
+    clip_path = os.path.join(_find_job_dir(job_id), filename)
+    if not os.path.isfile(clip_path):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    enhance_id = str(uuid.uuid4())[:8]
+    enhance_job = {
+        'id': enhance_id,
+        'status': 'starting',
+        'progress': 0,
+        'stage': 'Initializing...',
+        'results': {},
+        'error': None,
+    }
+    with _enhance_lock:
+        _enhance_jobs[enhance_id] = enhance_job
+
+    thread = threading.Thread(
+        target=_run_auto_enhance,
+        args=(enhance_id, job_id, filename, headline, clip_path),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({'enhance_id': enhance_id})
+
+
+@app.route('/api/clips/auto-enhance/<enhance_id>', methods=['GET'])
+def auto_enhance_status(enhance_id):
+    """Poll auto-enhance job status."""
+    with _enhance_lock:
+        job = _enhance_jobs.get(enhance_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
+
+
+def _run_auto_enhance(enhance_id, job_id, filename, headline, clip_path):
+    """Background thread: subtitle → overlay → thumbnail pipeline."""
+    def _update(**kwargs):
+        with _enhance_lock:
+            _enhance_jobs[enhance_id].update(kwargs)
+
+    stem = Path(filename).stem
+    ext = Path(filename).suffix
+    job_dir = _find_job_dir(job_id)
+    results = {}
+
+    try:
+        # ── Stage 1: Subtitles (0-50%) ──
+        _update(status='processing', progress=10, stage='Generating subtitles...')
+        try:
+            sub_result = generate_subtitles(clip_path, model_size='base')
+            srt_name = f"{stem}.srt"
+            srt_path = os.path.join(job_dir, srt_name)
+            with open(srt_path, 'w', encoding='utf-8') as f:
+                f.write(sub_result['srt'])
+
+            sub_out_name = f"{stem}_enhanced{ext}"
+            sub_out_path = os.path.join(job_dir, sub_out_name)
+            burn_subtitles(clip_path, sub_result['srt'], sub_out_path)
+
+            results['subtitles'] = {
+                'subtitled_url': f'/clips/{job_id}/{sub_out_name}',
+                'srt_url': f'/clips/{job_id}/{srt_name}',
+                'word_count': len(sub_result.get('words', [])),
+            }
+            # Use subtitled video as input for next stage
+            working_path = sub_out_path
+        except Exception as e:
+            logger.warning(f"Auto-enhance subtitle stage failed: {e}")
+            results['subtitles'] = {'error': str(e)}
+            working_path = clip_path  # Continue with original
+
+        # ── Stage 2: Text Overlay (50-80%) ──
+        _update(progress=50, stage='Burning text overlay...')
+        try:
+            overlay_out_name = f"{stem}_enhanced_overlay{ext}"
+            overlay_out_path = os.path.join(job_dir, overlay_out_name)
+
+            # Build text block: headline centered at top-third
+            text_blocks = [{
+                'words': [
+                    {'text': w, 'color': '#CAFF00' if i == 0 else '#FFFFFF'}
+                    for i, w in enumerate(headline.split())
+                ],
+                'x': 0.5,
+                'y': 0.15,
+                'font_size': 48,
+                'bg_opacity': 0.6,
+            }]
+            burn_text_overlay(working_path, overlay_out_path, text_blocks)
+
+            results['overlay'] = {
+                'overlay_url': f'/clips/{job_id}/{overlay_out_name}',
+            }
+            # Final video is the overlay version
+            final_video = overlay_out_path
+            final_video_name = overlay_out_name
+        except Exception as e:
+            logger.warning(f"Auto-enhance overlay stage failed: {e}")
+            results['overlay'] = {'error': str(e)}
+            final_video = working_path
+            final_video_name = os.path.basename(working_path)
+
+        # ── Stage 3: Thumbnail (80-100%) ──
+        _update(progress=80, stage='Generating thumbnail...')
+        try:
+            thumb_name = f"{stem}_thumb_auto.png"
+            thumb_path = os.path.join(job_dir, thumb_name)
+            generate_template_thumbnail(final_video, headline, thumb_path, style='bold')
+
+            results['thumbnail'] = {
+                'thumbnail_url': f'/clips/{job_id}/{thumb_name}',
+            }
+        except Exception as e:
+            logger.warning(f"Auto-enhance thumbnail stage failed: {e}")
+            results['thumbnail'] = {'error': str(e)}
+
+        _update(
+            status='done', progress=100, stage='Complete',
+            results=results,
+            final_video_url=f'/clips/{job_id}/{final_video_name}',
+        )
+
+    except Exception as e:
+        logger.exception("Auto-enhance pipeline failed")
+        _update(status='error', error=str(e), results=results)
+
+
 @app.route('/api/clips/modulate', methods=['POST'])
 def modulate_clip():
     """Apply pixel modulation transforms to a clip for hash uniqueness."""
-    from video_modulator import modulate_video, ModulationConfig, get_presets
+    from post.video_modulator import modulate_video, ModulationConfig, get_presets
 
     data = request.get_json() or {}
     job_id = data.get('job_id', '')
@@ -1221,14 +1662,14 @@ def modulate_clip():
 @app.route('/api/clips/modulation-presets', methods=['GET'])
 def get_modulation_presets():
     """Return available modulation presets for the UI."""
-    from video_modulator import get_presets
+    from post.video_modulator import get_presets
     return jsonify(get_presets())
 
 
 @app.route('/api/clips/top-thumbnails', methods=['POST'])
 def get_top_thumbnails():
     """Score and return the top N visually striking frames for thumbnail selection."""
-    from thumbnail_generator import pick_top_frames
+    from post.thumbnail_generator import pick_top_frames
 
     data = request.get_json() or {}
     job_id = data.get('job_id', '')
@@ -1411,7 +1852,7 @@ def upload_cookies():
 @app.route('/api/commentary/voices')
 def commentary_voices():
     """List available TTS voices."""
-    from tts_engine import get_available_voices
+    from media.tts_engine import get_available_voices
     return jsonify({'voices': get_available_voices()})
 
 
@@ -1487,7 +1928,7 @@ def _commentary_job(cjob_id, video_path, voice, style, mode,
         jobs[cjob_id]['progress'] = 10
         jobs[cjob_id]['message'] = 'Transcribing video...'
 
-        from transcriber import transcribe
+        from core.transcriber import transcribe
 
         transcript = transcribe(video_path, model_size=whisper_model)
 
@@ -1504,8 +1945,8 @@ def _commentary_job(cjob_id, video_path, voice, style, mode,
         jobs[cjob_id]['progress'] = 40
         jobs[cjob_id]['message'] = 'AI generating narration script...'
 
-        from commentary import generate_commentary
-        from llm_analyzer import LLMConfig
+        from ai.commentary import generate_commentary
+        from core.llm_analyzer import LLMConfig
 
         llm_config = LLMConfig.from_env()
         transcript_dicts = [
@@ -1531,7 +1972,7 @@ def _commentary_job(cjob_id, video_path, voice, style, mode,
         jobs[cjob_id]['progress'] = 65
         jobs[cjob_id]['message'] = 'Generating voiceover audio...'
 
-        from tts_engine import synthesize_commentary
+        from media.tts_engine import synthesize_commentary
 
         # Output dir alongside the source video
         video_dir = os.path.dirname(video_path)
@@ -1562,7 +2003,7 @@ def _commentary_job(cjob_id, video_path, voice, style, mode,
         jobs[cjob_id]['progress'] = 85
         jobs[cjob_id]['message'] = f'Mixing audio ({mode})...'
 
-        from audio_mixer import mix_commentary
+        from media.audio_mixer import mix_commentary
 
         output_filename = f"{video_stem}_narrated.mp4"
         output_path = os.path.join(video_dir, output_filename)
@@ -1702,6 +2143,19 @@ def youtube_generate_metadata():
                          and '-->' not in l]
             transcript_text = ' '.join(text_lines)
 
+    # If no SRT exists, auto-transcribe the clip for context
+    if not transcript_text:
+        try:
+            logger.info(f"No SRT found for {filename}, auto-transcribing for metadata context...")
+            sub_result = generate_subtitles(clip_path, model_size='base', language='en')
+            # Save the SRT for future use
+            with open(srt_path, 'w', encoding='utf-8') as f:
+                f.write(sub_result['srt'])
+            transcript_text = ' '.join(w['word'] for w in sub_result.get('words', []))
+            logger.info(f"Auto-transcribed {len(sub_result.get('words', []))} words for metadata")
+        except Exception as e:
+            logger.warning(f"Auto-transcription for metadata failed: {e}")
+
     # Get clip duration
     duration = _get_video_duration(clip_path)
 
@@ -1721,89 +2175,132 @@ def youtube_generate_metadata():
             'ai_generated': False,
         })
 
-    try:
-        from openai import OpenAI
+    # ── Build content-aware metadata prompt ──
+    # Detect language from transcript to generate in matching language
+    has_hindi = any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in transcript_text[:500]) if transcript_text else False
+    has_hinglish = bool(re.search(r'\b(kya|hai|kaise|kuch|mujhe|tumhe|pyaar|dil|nahi|lekin|yaar|bhai)\b',
+                                   transcript_text[:500].lower())) if transcript_text else False
+    detected_lang = 'Hindi/Hinglish' if (has_hindi or has_hinglish) else 'English'
 
-        client = OpenAI(
-            base_url="https://integrate.api.nvidia.com/v1",
-            api_key=llm_config.nvidia_api_key,
-        )
+    prompt = f"""You are a YouTube metadata expert. Generate accurate, content-faithful metadata for this video clip.
 
-        prompt = f"""Act as a ruthless, highly successful YouTube Shorts strategist who has grown channels from 0 to 1M+ subscribers. Generate metadata for a short video clip to MAXIMIZE click-through rate (CTR), algorithm reach, and viewer retention.
+CRITICAL: Your titles and description MUST accurately reflect what happens in the video.
+Do NOT invent drama, accusations, or events that are not in the transcript.
+Do NOT use generic clickbait words (exposed, dark truth, banned, secret) unless the content actually contains them.
 
 Clip info:
 - Filename: {filename}
 - Duration: {int(duration)} seconds
-- Transcript/content: {transcript_text[:1500] if transcript_text else 'No transcript available. Generate based on filename.'}
+- Detected language: {detected_lang}
+- Transcript: {transcript_text[:2000] if transcript_text else 'No transcript. Use filename for context.'}
 
-Generate the following in JSON format:
+RULES:
+1. Read the transcript carefully. Understand what ACTUALLY happens in the clip.
+2. Titles must describe the real content — if it's a romantic scene, say so. If it's a comedy bit, say so.
+3. If the content is in Hindi/Hinglish, write titles in Hinglish (Roman script Hindi) with English mix.
+   Example: "Main Aisa Kya Karu Ki Tumhe Pyaar Ho Jaye" | Emotional Love Scene
+4. Titles under 70 characters. Make them compelling but HONEST.
+5. Description: 2-3 sentences describing what happens + call to action + 3 relevant hashtags.
+6. Tags: 12-15 tags that MATCH the actual content genre, language, and topic.
+7. If it's a movie/show clip, include the movie name, actors, genre in tags.
+
+Return ONLY valid JSON:
 {{
-    "titles": [
-        "Title option 1 (BEST — under 50 chars)",
-        "Title option 2 (under 50 chars)",
-        "Title option 3 (under 50 chars)"
-    ],
-    "title": "Your #1 recommended title from above",
-    "description": "2 sentences max. First sentence = visceral hook that stops the scroll. Second = context + call to action. End with exactly 3 high-volume hashtags relevant to the content.",
+    "titles": ["Title 1 (BEST)", "Title 2", "Title 3"],
+    "title": "Your best title",
+    "description": "Content-accurate description with hashtags",
     "tags": ["tag1", "tag2", "..."],
-    "pinned_comment": "A controversial or highly debatable question to drive immediate comments and engagement. Must feel like a real opinion, not marketing.",
-    "hook_script": "The exact 1-sentence voiceover script for the first 3 seconds. Start with the CLIMAX, not setup. Example: '99% of players would miss this. Watch his right foot.'"
-}}
+    "pinned_comment": "A genuine question about the content to drive discussion",
+    "hook_script": "First 3 seconds hook that matches the actual content"
+}}"""
 
-RULES (non-negotiable):
-- Titles MUST be under 50 characters — no exceptions
-- Titles must create intense curiosity or FOMO — do NOT summarize the video, tease the most shocking part
-- Avoid generic clickbait ("You won't believe...", "Wait for it...")
-- Use power words: impossible, banned, secret, exposed, insane, untold, legendary
-- Description first sentence must hook HARD — if someone reads it, they MUST watch
-- Tags: exactly 12 tags. Mix 4 broad high-volume tags + 4 medium niche tags + 4 long-tail specific tags
-- Pinned comment must be polarizing enough to make people reply — think debate, not agreement
-- Hook script: NEVER start with "Today we..." or "In this video..." — start with the climax/payoff
-- Output ONLY valid JSON, nothing else"""
+    # ── Try Gemini first (best at content understanding) ──
+    raw = None
+    provider_used = None
 
-        response = client.chat.completions.create(
-            model=llm_config.nvidia_model,
-            messages=[
-                {"role": "system", "content": "You are a viral content analyst and YouTube SEO expert. Respond only with valid JSON."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-            max_tokens=1024,
-        )
+    if llm_config.gemini_api_key:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=llm_config.gemini_api_key)
+            model = genai.GenerativeModel(llm_config.gemini_model)
+            response = model.generate_content(prompt)
+            raw = response.text.strip()
+            provider_used = 'gemini'
+        except Exception as e:
+            logger.warning(f"Gemini metadata failed: {e}")
 
-        raw = response.choices[0].message.content.strip()
-        # Strip markdown code fences if present
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-        if raw.endswith("```"):
-            raw = raw[:-3].strip()
+    # ── Fallback to NVIDIA ──
+    if not raw and llm_config.nvidia_api_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                base_url="https://integrate.api.nvidia.com/v1",
+                api_key=llm_config.nvidia_api_key,
+            )
+            response = client.chat.completions.create(
+                model=llm_config.nvidia_model,
+                messages=[
+                    {"role": "system", "content": "Generate content-accurate YouTube metadata. Respond only with valid JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.5,
+                max_tokens=1024,
+            )
+            raw = response.choices[0].message.content.strip()
+            provider_used = 'nvidia'
+        except Exception as e:
+            logger.warning(f"NVIDIA metadata failed: {e}")
 
-        result = json.loads(raw)
-        return jsonify({
-            'title': result.get('title', filename)[:100],
-            'titles': result.get('titles', [result.get('title', filename)])[:5],
-            'description': result.get('description', '')[:5000],
-            'tags': result.get('tags', [])[:15],
-            'pinned_comment': result.get('pinned_comment', ''),
-            'hook_script': result.get('hook_script', ''),
-            'ai_generated': True,
-        })
+    # ── Fallback to Groq ──
+    if not raw and llm_config.groq_api_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=llm_config.groq_api_key)
+            response = client.chat.completions.create(
+                model=llm_config.groq_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=1024,
+            )
+            raw = response.choices[0].message.content.strip()
+            provider_used = 'groq'
+        except Exception as e:
+            logger.warning(f"Groq metadata failed: {e}")
 
-    except Exception as e:
-        logger.exception("NVIDIA metadata generation failed")
-        # Fallback to basic metadata
-        meta = youtube_uploader.generate_clip_metadata(
-            clip_info={'hook_text': transcript_text[:200], 'duration': duration},
-            source_title=filename,
-            clip_number=1, total_clips=1,
-        )
-        return jsonify({
-            'title': meta['title'],
-            'description': meta['description'],
-            'tags': meta['tags'],
-            'ai_generated': False,
-            'warning': f'NVIDIA NIM failed ({str(e)[:80]}), using basic metadata',
-        })
+    if raw:
+        try:
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            if raw.endswith("```"):
+                raw = raw[:-3].strip()
+
+            result = json.loads(raw)
+            return jsonify({
+                'title': result.get('title', filename)[:100],
+                'titles': result.get('titles', [result.get('title', filename)])[:5],
+                'description': result.get('description', '')[:5000],
+                'tags': result.get('tags', [])[:15],
+                'pinned_comment': result.get('pinned_comment', ''),
+                'hook_script': result.get('hook_script', ''),
+                'ai_generated': True,
+                'provider': provider_used,
+            })
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Failed to parse {provider_used} metadata JSON: {e}")
+
+    # ── All providers failed — basic fallback ──
+    meta = youtube_uploader.generate_clip_metadata(
+        clip_info={'hook_text': transcript_text[:200], 'duration': duration},
+        source_title=filename,
+        clip_number=1, total_clips=1,
+    )
+    return jsonify({
+        'title': meta['title'],
+        'description': meta['description'],
+        'tags': meta['tags'],
+        'ai_generated': False,
+        'warning': 'All AI providers failed, using basic metadata',
+    })
 
 
 @app.route('/api/youtube/generate-metadata-batch', methods=['POST'])
@@ -1850,47 +2347,62 @@ def youtube_generate_metadata_batch():
 
         duration = _get_video_duration(clip_path)
 
-        # Try NVIDIA AI
+        # Generate content-aware metadata via LLM (Gemini → NVIDIA → Groq)
         llm_config = LLMConfig.from_env()
         ai_generated = False
         title, description, tags = filename, '', []
 
-        if llm_config.nvidia_api_key:
+        # Detect language
+        has_hindi = any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in transcript_text[:300]) if transcript_text else False
+        has_hinglish = bool(re.search(r'\b(kya|hai|kaise|mujhe|tumhe|pyaar|dil|nahi)\b',
+                                       transcript_text[:300].lower())) if transcript_text else False
+        det_lang = 'Hindi/Hinglish' if (has_hindi or has_hinglish) else 'English'
+
+        batch_prompt = f"""Generate accurate, content-faithful YouTube metadata for clip {idx+1}/{len(clip_files)}.
+Read the transcript and describe what ACTUALLY happens. Do NOT invent drama or use generic clickbait.
+If content is in Hindi/Hinglish, write titles in Hinglish (Roman script).
+
+Clip: {filename} | Duration: {int(duration)}s | Language: {det_lang}
+Transcript: {transcript_text[:1200] if transcript_text else 'No transcript. Use filename.'}
+
+Return ONLY valid JSON:
+{{"titles": ["Title 1", "Title 2", "Title 3"], "title": "Best title",
+"description": "Accurate description + 3 hashtags", "tags": ["12-15 content-matching tags"],
+"pinned_comment": "Genuine question about the content", "hook_script": "Content-accurate hook"}}"""
+
+        # Try Gemini first
+        raw_batch = None
+        if not raw_batch and llm_config.gemini_api_key:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=llm_config.gemini_api_key)
+                model = genai.GenerativeModel(llm_config.gemini_model)
+                resp = model.generate_content(batch_prompt)
+                raw_batch = resp.text.strip()
+            except Exception as e:
+                logger.warning(f"Gemini batch metadata failed for {filename}: {e}")
+
+        # Fallback to NVIDIA
+        if not raw_batch and llm_config.nvidia_api_key:
             try:
                 from openai import OpenAI
                 client = OpenAI(
                     base_url="https://integrate.api.nvidia.com/v1",
                     api_key=llm_config.nvidia_api_key,
                 )
-                prompt = f"""Act as a ruthless YouTube Shorts strategist. Generate metadata for clip {idx+1}/{len(clip_files)} to MAXIMIZE CTR and algorithm reach.
-
-Clip info:
-- Filename: {filename}
-- Duration: {int(duration)} seconds
-- Transcript: {transcript_text[:1200] if transcript_text else 'No transcript. Generate based on filename.'}
-
-Return ONLY valid JSON:
-{{
-    "titles": ["Title 1 (under 50 chars)", "Title 2", "Title 3"],
-    "title": "Best title from above",
-    "description": "Hook sentence + context. End with 3 hashtags.",
-    "tags": ["12 tags mixing broad + niche"],
-    "pinned_comment": "Polarizing question to drive comments",
-    "hook_script": "1-sentence voiceover for first 3 seconds — start with climax"
-}}
-
-Rules: titles under 50 chars, create FOMO not summaries, use power words, no generic clickbait. Output ONLY JSON."""
-
                 response = client.chat.completions.create(
                     model=llm_config.nvidia_model,
-                    messages=[
-                        {"role": "system", "content": "You are a viral content strategist. Respond only with valid JSON."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.7,
+                    messages=[{"role": "user", "content": batch_prompt}],
+                    temperature=0.5,
                     max_tokens=1024,
                 )
-                raw = response.choices[0].message.content.strip()
+                raw_batch = response.choices[0].message.content.strip()
+            except Exception as e:
+                logger.warning(f"NVIDIA batch metadata failed for {filename}: {e}")
+
+        if raw_batch:
+            try:
+                raw = raw_batch
                 if raw.startswith("```"):
                     raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
                 if raw.endswith("```"):
@@ -2181,6 +2693,257 @@ def _youtube_upload_job(upload_job_id, clip_dir, clip_files, privacy, category,
 
 
 # ═══════════════════════════════════════════════════
+#  ENGAGEMENT CLIPS (5-20 min segments from long videos)
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/engagement-clip', methods=['POST'])
+def engagement_clip():
+    """Extract medium-length (5-20 min) high-engagement segments from a video."""
+    video_id = request.form.get('video_id', '')
+    entry = video_library.get_video(video_id) if video_id else None
+    if not entry:
+        return jsonify({'error': 'Select a video from the library'}), 400
+    if not Path(entry.file_path).exists():
+        return jsonify({'error': 'Video file missing'}), 400
+
+    settings = {
+        'model_size': request.form.get('model_size', 'base'),
+        'max_segments': int(request.form.get('max_segments', 5)),
+        'min_duration': int(request.form.get('min_duration', 300)),
+        'max_duration': int(request.form.get('max_duration', 1200)),
+        'target_duration': int(request.form.get('target_duration', 600)),
+        'min_score': float(request.form.get('min_score', 0.35)),
+        'crop_vertical': request.form.get('crop_vertical', 'true') == 'true',
+        'use_llm': request.form.get('use_llm', 'true') == 'true',
+    }
+
+    job_id = str(uuid.uuid4())[:8]
+    job_dir = _make_clip_output_dir(entry.title, job_id)
+
+    jobs[job_id] = {
+        'status': 'transcribing',
+        'progress': 5,
+        'message': 'Starting engagement analysis...',
+        'clips': [],
+        'error': None,
+    }
+
+    thread = threading.Thread(
+        target=_engagement_clip_job,
+        args=(job_id, entry.file_path, video_id, job_dir, settings),
+        daemon=True,
+    )
+    thread.start()
+    return jsonify({'job_id': job_id, 'status': 'started'})
+
+
+def _engagement_clip_job(job_id, video_path, video_id, output_dir, settings):
+    """Background: transcribe → engagement analyze → extract segments."""
+    try:
+        # Transcribe
+        jobs[job_id]['status'] = 'transcribing'
+        jobs[job_id]['message'] = f'Transcribing video ({settings["model_size"]})...'
+        jobs[job_id]['progress'] = 10
+
+        transcript = transcribe(
+            video_path=video_path,
+            model_size=settings['model_size'],
+        )
+        jobs[job_id]['message'] = f'Transcribed: {len(transcript.segments)} segments'
+        jobs[job_id]['progress'] = 40
+        transcript.save(os.path.join(output_dir, 'transcript.json'))
+
+        # Engagement analysis
+        jobs[job_id]['status'] = 'analyzing'
+        jobs[job_id]['message'] = 'Analyzing for high-engagement segments...'
+        jobs[job_id]['progress'] = 45
+
+        eng_config = EngagementConfig(
+            min_segment_duration=settings['min_duration'],
+            max_segment_duration=settings['max_duration'],
+            target_segment_duration=settings['target_duration'],
+            max_segments=settings['max_segments'],
+            min_engagement_score=settings['min_score'],
+            crop_vertical=settings['crop_vertical'],
+            use_llm=settings['use_llm'],
+        )
+
+        # Try LLM-assisted analysis first
+        llm_segments = []
+        if settings.get('use_llm'):
+            jobs[job_id]['message'] = 'Running AI engagement analysis...'
+            jobs[job_id]['progress'] = 50
+            llm_segments = analyze_with_llm_for_engagement(transcript, eng_config)
+
+        analyzer = EngagementAnalyzer(eng_config)
+        candidates = analyzer.analyze(transcript, llm_segments=llm_segments)
+
+        if not candidates:
+            jobs[job_id]['message'] = 'No high-engagement segments found. Try lowering min score.'
+            jobs[job_id]['progress'] = 100
+            jobs[job_id]['status'] = 'completed'
+            return
+
+        jobs[job_id]['message'] = f'{len(candidates)} segments found'
+        jobs[job_id]['progress'] = 60
+
+        # Extract segments using FFmpeg
+        jobs[job_id]['status'] = 'splitting'
+        total = len(candidates)
+
+        clipper_config = ClipperConfig(
+            min_clip_duration=settings['min_duration'],
+            max_clip_duration=settings['max_duration'],
+            crop_vertical=settings['crop_vertical'],
+            anti_copyright=settings.get('anti_copyright', True),
+            pre_hook_padding=0,  # engagement segments are already bounded
+            post_hook_padding=0,
+        )
+        clipper = VideoClipper(clipper_config)
+
+        clips_info = []
+        for i, seg in enumerate(candidates):
+            jobs[job_id]['message'] = f'Extracting segment {i+1} of {total}...'
+            jobs[job_id]['progress'] = 60 + int((i / total) * 35)
+
+            # Create a ClipCandidate for the clipper
+            from core.analyzer import ClipCandidate
+            cand = ClipCandidate(
+                start=seg.start, end=seg.end,
+                score=seg.score, hook_text=seg.summary,
+                reason=seg.reason,
+            )
+            results = clipper.extract_all_clips(
+                video_path=video_path,
+                candidates=[cand],
+                output_dir=output_dir,
+                video_duration=transcript.duration,
+            )
+            for r in results:
+                if r.success:
+                    fname = Path(r.output_path).name
+                    clips_info.append({
+                        'clip_number': r.clip_number,
+                        'filename': fname,
+                        'url': f'/clips/{job_id}/{fname}',
+                        'start': r.start, 'end': r.end,
+                        'duration': r.duration,
+                        'score': r.score,
+                        'reason': r.reason,
+                        'hook_text': seg.title_hint,
+                        'summary': seg.summary,
+                    })
+
+        video_library.add_clips_directory(video_id, output_dir)
+
+        jobs[job_id]['clips'] = clips_info
+        jobs[job_id]['message'] = f'Done! {len(clips_info)} engagement clips extracted.'
+        jobs[job_id]['progress'] = 100
+        jobs[job_id]['status'] = 'completed'
+
+    except Exception as e:
+        logger.exception(f"Engagement clip job {job_id} failed")
+        jobs[job_id]['status'] = 'error'
+        jobs[job_id]['error'] = str(e)
+        jobs[job_id]['message'] = f'Error: {e}'
+
+
+# ═══════════════════════════════════════════════════
+#  FULL VIDEO PROCESSING (any length, all features)
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/full-video', methods=['POST'])
+def full_video_process():
+    """Process a full-length video with all shorts/reels features."""
+    video_id = request.form.get('video_id', '')
+    entry = video_library.get_video(video_id) if video_id else None
+    if not entry:
+        return jsonify({'error': 'Select a video from the library'}), 400
+    if not Path(entry.file_path).exists():
+        return jsonify({'error': 'Video file missing'}), 400
+
+    config = FullVideoConfig(
+        crop_vertical=request.form.get('crop_vertical', 'true') == 'true',
+        enable_subtitles=request.form.get('enable_subtitles', 'false') == 'true',
+        subtitle_model_size=request.form.get('subtitle_model_size', 'base'),
+        subtitle_language=request.form.get('subtitle_language') or None,
+        enable_overlay=request.form.get('enable_overlay', 'false') == 'true',
+        overlay_text=request.form.get('overlay_text', ''),
+        enable_thumbnail=request.form.get('enable_thumbnail', 'false') == 'true',
+        thumbnail_title=request.form.get('thumbnail_title', ''),
+        thumbnail_style=request.form.get('thumbnail_style', 'bold'),
+        enable_modulation=request.form.get('enable_modulation', 'false') == 'true',
+        modulation_preset=request.form.get('modulation_preset', ''),
+    )
+
+    job_id = str(uuid.uuid4())[:8]
+    job_dir = _make_clip_output_dir(entry.title, job_id)
+
+    jobs[job_id] = {
+        'status': 'processing',
+        'progress': 5,
+        'message': 'Starting full video processing...',
+        'result': None,
+        'error': None,
+    }
+
+    thread = threading.Thread(
+        target=_full_video_job,
+        args=(job_id, entry.file_path, video_id, job_dir, config),
+        daemon=True,
+    )
+    thread.start()
+    return jsonify({'job_id': job_id, 'status': 'started'})
+
+
+def _full_video_job(job_id, video_path, video_id, output_dir, config):
+    """Background: full video processing pipeline."""
+    try:
+        def _progress(pct, msg):
+            jobs[job_id]['progress'] = pct
+            jobs[job_id]['message'] = msg
+
+        result = process_full_video(
+            video_path=video_path,
+            output_dir=output_dir,
+            config=config,
+            progress_callback=_progress,
+        )
+
+        video_library.add_clips_directory(video_id, output_dir)
+
+        if result.success:
+            fname = Path(result.output_path).name
+            result_data = {
+                'output_url': f'/clips/{job_id}/{fname}',
+                'output_filename': fname,
+                'processing_steps': result.processing_steps,
+                'duration': result.duration,
+            }
+            if result.thumbnail_path:
+                tname = Path(result.thumbnail_path).name
+                result_data['thumbnail_url'] = f'/clips/{job_id}/{tname}'
+            if result.srt_path:
+                sname = Path(result.srt_path).name
+                result_data['srt_url'] = f'/clips/{job_id}/{sname}'
+
+            jobs[job_id]['result'] = result_data
+            jobs[job_id]['message'] = f'Done! {len(result.processing_steps)} steps applied.'
+            jobs[job_id]['progress'] = 100
+            jobs[job_id]['status'] = 'completed'
+        else:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['error'] = result.error
+            jobs[job_id]['message'] = f'Error: {result.error}'
+
+    except Exception as e:
+        logger.exception(f"Full video job {job_id} failed")
+        jobs[job_id]['status'] = 'error'
+        jobs[job_id]['error'] = str(e)
+        jobs[job_id]['message'] = f'Error: {e}'
+
+
+# ═══════════════════════════════════════════════════
 #  CONTENT FACTORY — AI Video Generation from Trends
 # ═══════════════════════════════════════════════════
 
@@ -2332,8 +3095,12 @@ if __name__ == '__main__':
         try:
             from waitress import serve
             print(f"  [Waitress] Serving on http://0.0.0.0:{port}")
-            serve(app, host='0.0.0.0', port=port, threads=8,
-                  channel_timeout=300, recv_bytes=65536)
+            serve(app, host="0.0.0.0", port=port, threads=8,
+                  channel_timeout=600,
+                  recv_bytes=262144,
+                  max_request_body_size=5368709120,
+                  max_request_header_size=65536,
+                  )
         except ImportError:
             logger.warning("Waitress not installed, falling back to Flask dev server")
-            app.run(host='0.0.0.0', port=port, debug=False)
+            app.run(host="0.0.0.0", port=port, debug=False)

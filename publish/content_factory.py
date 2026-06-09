@@ -19,19 +19,19 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Import pipeline modules
-from trend_scout import scout_trending, get_available_categories
-from script_generator import generate_script, get_style_presets, Script
-import script_generator
-from visual_engine import fetch_visuals_for_script
-from video_editor import assemble_video, EditConfig
-from music_mixer import (
+from ai.trend_scout import scout_trending, get_available_categories
+from ai.script_generator import generate_script, get_style_presets, Script
+import ai.script_generator as script_generator
+from ai.visual_engine import fetch_visuals_for_script
+from post.video_editor import assemble_video, EditConfig
+from media.music_mixer import (
     search_pixabay_music, get_local_music, download_music,
     mix_background_music, get_mood_options
 )
 
 # TTS reuse from existing clipper
 try:
-    from tts_engine import generate_tts
+    from media.tts_engine import generate_tts
 except ImportError:
     generate_tts = None
 
@@ -225,7 +225,7 @@ def _run_pipeline(job: FactoryJob):
         if not tts_success:
             # Fallback: generate silent audio placeholder
             logger.warning(f"[{job.job_id}] TTS failed, using silent placeholder")
-            from music_mixer import generate_silent_tone
+            from media.music_mixer import generate_silent_tone
             generate_silent_tone(script.total_duration, tts_path)
 
         _update_job(job, tts_path=tts_path, progress=65, message="Voiceover ready")

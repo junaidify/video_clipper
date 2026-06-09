@@ -66,6 +66,19 @@ class ClipperConfig:
     merge_overlapping: bool = True
     # Minimum gap between clips (seconds) — closer clips get merged
     min_gap_between_clips: int = 5
+    # Anti-copyright: auto-apply stealth modulation to every clip
+    # Breaks perceptual hashing so platforms don't flag as repost
+    anti_copyright: bool = True
+    # Anti-copyright modulation params
+    # Tuned to defeat Content ID while staying visually/audibly acceptable
+    ac_zoom_percent: float = 6.0       # 6% zoom — breaks pixel grid alignment
+    ac_color_shift: bool = True        # warm color grade (shifts RGB ratios)
+    ac_grain_intensity: float = 0.08   # noticeable-but-stylistic film grain
+    ac_speed_shift: float = 1.04       # 4% speed — outside Content ID tolerance
+    ac_mirror: bool = True             # horizontal flip — defeats frame hashing
+    ac_pitch_shift: float = 1.5        # semitones pitch shift (subtle but breaks audio fingerprint)
+    ac_bass_boost: bool = True         # EQ change defeats audio matching
+    ac_noise_floor: float = 0.005      # very low background noise breaks silence fingerprints
 
 
 @dataclass

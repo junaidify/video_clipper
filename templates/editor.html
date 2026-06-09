@@ -364,6 +364,13 @@
                 <h3>SUBTITLES</h3>
             </div>
             <p class="tool-desc">Generate subtitles using Whisper (local). Falls back to Gemini API if Whisper isn't available.</p>
+            <div style="margin-bottom:10px">
+                <label>LANGUAGE</label>
+                <select id="sub-lang" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-xs);padding:10px 14px;color:var(--text);font-family:var(--sans);font-size:0.85rem">
+                    <option value="hinglish">Hinglish (Hindi in Roman script)</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
             <button class="btn btn-primary" id="btn-sub" onclick="runSubtitles()">
                 <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="14" x2="23" y2="14"/></svg>
                 Generate Subtitles
@@ -449,6 +456,38 @@
             </div>
             <div id="thumb-results"></div>
         </div>
+        <!-- GENERATE FINAL VIDEO -->
+        <div class="tool-section" style="border:2px solid var(--lime);background:var(--lime-subtle)">
+            <div class="tool-section-header">
+                <div class="ts-icon" style="color:var(--lime)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+                <h3 style="color:var(--lime)">GENERATE FINAL VIDEO</h3>
+            </div>
+            <p class="tool-desc">Combine all your edits — subtitles, text overlay, thumbnail — into a single final video. Run each section above first, then hit Generate.</p>
+            <div id="final-checklist" style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px">
+                <div class="final-check" id="fc-sub" style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-dim)">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--text-ghost)" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+                    <span>Subtitles — not generated yet</span>
+                </div>
+                <div class="final-check" id="fc-ov" style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-dim)">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--text-ghost)" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+                    <span>Text Overlay — not applied yet</span>
+                </div>
+                <div class="final-check" id="fc-thumb" style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-dim)">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--text-ghost)" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+                    <span>Thumbnail — not generated yet</span>
+                </div>
+            </div>
+            <button class="btn btn-primary" id="btn-final" onclick="generateFinalVideo()" style="background:var(--lime);color:#111;border-color:var(--lime);font-weight:700;font-size:0.95rem;padding:14px 24px;width:100%">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Generate Final Video
+            </button>
+            <div class="progress-wrap" id="final-progress">
+                <div class="progress-bar-bg"><div class="progress-bar" id="final-bar"></div></div>
+                <div class="progress-info"><span class="msg" id="final-msg">Processing...</span><span class="pct" id="final-pct">0%</span></div>
+            </div>
+            <div id="final-results"></div>
+        </div>
+
     </div>
 </div>
 
@@ -497,10 +536,11 @@ async function runSubtitles() {
     const prog = simulateProgress('sub', 'Transcribing with Whisper...', 30000);
 
     try {
+        const subLang = document.getElementById('sub-lang')?.value || 'hinglish';
         const res = await fetch('/api/clips/subtitle', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ job_id: jobId, filename: filename, model_size: 'base' })
+            body: JSON.stringify({ job_id: jobId, filename: filename, model_size: 'base', language: subLang })
         });
         const data = await res.json();
         if (data.error) {
@@ -714,6 +754,128 @@ async function runThumb(mode) {
 // ═══ Helpers ═══
 function esc(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
 function clamp(v) { return Math.max(0.05, Math.min(0.95, v)); }
+
+// ═══ FINAL VIDEO STATE ═══
+const finalState = { subtitledUrl: null, overlayUrl: null, thumbUrl: null };
+
+function updateChecklist(type, label, url) {
+    finalState[type + 'Url'] = url;
+    const el = document.getElementById('fc-' + type);
+    if (el) {
+        el.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--green)" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span style="color:var(--green)">${label}</span>`;
+    }
+}
+
+// Patch existing result handlers to update checklist
+const _origSubResults = document.getElementById('sub-results');
+const _origOvResults = document.getElementById('ov-results');
+const _origThumbResults = document.getElementById('thumb-results');
+
+new MutationObserver(() => {
+    const link = _origSubResults.querySelector('a[href*="_subtitled"]');
+    if (link) updateChecklist('sub', 'Subtitles — ready', link.href);
+}).observe(_origSubResults, { childList: true });
+
+new MutationObserver(() => {
+    const link = _origOvResults.querySelector('a[href*="_overlay"]');
+    if (link) updateChecklist('ov', 'Text Overlay — ready', link.href);
+}).observe(_origOvResults, { childList: true });
+
+new MutationObserver(() => {
+    const img = _origThumbResults.querySelector('img');
+    if (img) updateChecklist('thumb', 'Thumbnail — ready', img.src);
+}).observe(_origThumbResults, { childList: true });
+
+// ═══ GENERATE FINAL VIDEO ═══
+async function generateFinalVideo() {
+    const btn = document.getElementById('btn-final');
+    btn.disabled = true;
+
+    // Determine which enhancements were made
+    const hasSubtitles = !!finalState.subtitledUrl;
+    const hasOverlay = !!finalState.overlayUrl;
+    const hasThumb = !!finalState.thumbUrl;
+
+    if (!hasSubtitles && !hasOverlay) {
+        alert('Please generate at least subtitles or a text overlay first, then click Generate Final Video.');
+        btn.disabled = false;
+        return;
+    }
+
+    const prog = simulateProgress('final', 'Building final video...', 30000);
+
+    try {
+        // Use the auto-enhance endpoint which chains subtitle → overlay → thumbnail
+        const res = await fetch('/api/clips/auto-enhance', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                job_id: jobId,
+                filename: filename,
+                headline: document.getElementById('ov-text')?.value?.trim() || document.getElementById('thumb-title')?.value?.trim() || 'WATCH THIS',
+                // Pass flags for what to include
+                include_subtitles: hasSubtitles,
+                include_overlay: hasOverlay,
+                include_thumbnail: hasThumb,
+            })
+        });
+        const data = await res.json();
+        if (data.error) {
+            prog.fail('Error: ' + data.error);
+            btn.disabled = false;
+            return;
+        }
+
+        // Poll for completion
+        const enhanceId = data.enhance_id;
+        const poll = setInterval(async () => {
+            try {
+                const pr = await fetch(`/api/clips/auto-enhance/${enhanceId}`);
+                const pj = await pr.json();
+                showProgress('final', pj.stage || 'Processing...', pj.progress || 0);
+
+                if (pj.status === 'done') {
+                    clearInterval(poll);
+                    prog.stop('Final video ready!');
+                    let html = '';
+                    if (pj.final_video_url) {
+                        html += `<a class="result-link" href="${pj.final_video_url}" target="_blank">
+                            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            <span class="rl-label">Play Final Video</span>
+                        </a>
+                        <a class="result-link" href="${pj.final_video_url}" download>
+                            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span class="rl-label">Download Final Video</span>
+                        </a>`;
+                    }
+                    if (pj.results?.thumbnail?.thumbnail_url) {
+                        html += `<img class="thumb-img" src="${pj.results.thumbnail.thumbnail_url}?t=${Date.now()}" alt="Thumbnail" style="margin-top:10px">`;
+                    }
+                    if (pj.results?.subtitles?.srt_url) {
+                        html += `<a class="result-link" href="${pj.results.subtitles.srt_url}" download>
+                            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span class="rl-label">Download .SRT</span>
+                        </a>`;
+                    }
+                    document.getElementById('final-results').innerHTML = html;
+                    // Update the video preview to show the final version
+                    if (pj.final_video_url) {
+                        document.getElementById('editor-source').src = pj.final_video_url;
+                        document.getElementById('editor-video').load();
+                    }
+                    btn.disabled = false;
+                } else if (pj.status === 'error') {
+                    clearInterval(poll);
+                    prog.fail('Error: ' + (pj.error || 'Unknown'));
+                    btn.disabled = false;
+                }
+            } catch(e) { /* keep polling */ }
+        }, 1500);
+    } catch(e) {
+        prog.fail('Network error: ' + e.message);
+        btn.disabled = false;
+    }
+}
 </script>
 </body>
 </html>
