@@ -101,13 +101,37 @@ def is_configured() -> bool:
 
 
 def is_authenticated() -> bool:
-    """Check if we have a valid (or refreshable) token."""
+    """Check if we have a valid (or refreshable) token.
+    
+    Actually attempts a token refresh to verify the refresh token is still
+    alive. Google Cloud apps in 'Testing' mode expire refresh tokens after
+    7 days, so we must validate — not just check existence.
+    """
     if not os.path.isfile(TOKEN_FILE):
         return False
     try:
         from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        return creds.valid or (creds.expired and creds.refresh_token)
+        if creds.valid:
+            return True
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                # Persist the refreshed token
+                with open(TOKEN_FILE, 'w') as f:
+                    f.write(creds.to_json())
+                return True
+            except Exception:
+                # Refresh token is dead (expired/revoked) — remove stale file
+                # so the UI correctly shows "not connected" instead of lying
+                logger.warning("YouTube refresh token expired or revoked. Removing stale token.")
+                try:
+                    os.remove(TOKEN_FILE)
+                except OSError:
+                    pass
+                return False
+        return False
     except Exception:
         return False
 
@@ -180,13 +204,34 @@ def _get_authenticated_service():
     creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
     if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        # Re-persist refreshed token
-        with open(TOKEN_FILE, 'w') as f:
-            f.write(creds.to_json())
+        try:
+            creds.refresh(Request())
+            # Re-persist refreshed token
+            with open(TOKEN_FILE, 'w') as f:
+                f.write(creds.to_json())
+        except Exception as e:
+            # Token refresh failed — remove stale token so user can re-authenticate
+            logger.error(f"YouTube token refresh failed: {e}")
+            try:
+                os.remove(TOKEN_FILE)
+            except OSError:
+                pass
+            raise RuntimeError(
+                "YouTube session expired. Please re-connect your YouTube account. "
+                "(If your Google Cloud app is in 'Testing' mode, tokens expire after "
+                "7 days — publish the app to avoid this.)"
+            )
 
     if not creds.valid:
-        raise RuntimeError("YouTube credentials invalid. Re-connect your account.")
+        # Token exists but isn't valid and can't be refreshed — clean up
+        try:
+            os.remove(TOKEN_FILE)
+        except OSError:
+            pass
+        raise RuntimeError(
+            "YouTube credentials invalid. The stored token has been removed. "
+            "Please re-connect your YouTube account."
+        )
 
     return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, credentials=creds)
 
