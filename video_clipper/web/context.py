@@ -31,6 +31,7 @@ _init_lock = threading.Lock()
 
 # Thread pools and job registries
 executor = ThreadPoolExecutor(max_workers=4)
+GLOBAL_THREAD_POOL = executor
 
 jobs_lock = threading.Lock()
 jobs: Dict[str, dict] = {}
@@ -58,11 +59,18 @@ def get_pattern_trainer() -> PatternTrainer:
         return _pattern_trainer
 
 
-def set_job(job_id: str, **kwargs):
+def set_job(job_id: str, *args, **kwargs):
     with jobs_lock:
         if job_id not in jobs:
             jobs[job_id] = {}
-        jobs[job_id].update(kwargs)
+        if args and isinstance(args[0], dict):
+            jobs[job_id].update(args[0])
+        if kwargs:
+            jobs[job_id].update(kwargs)
+
+
+def update_job(job_id: str, *args, **kwargs):
+    set_job(job_id, *args, **kwargs)
 
 
 def get_job_state(job_id: str) -> Optional[dict]:
