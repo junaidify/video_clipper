@@ -1,0 +1,43 @@
+# ==============================================================================
+# Render.com Blueprint Specification (render.yaml)
+# Enables 1-click infrastructure deployment on Render
+# ==============================================================================
+
+services:
+  - type: web
+    name: video-clipper
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter # 512MB-2GB RAM recommended for Whisper & FFmpeg
+    region: oregon # or frankfurt, singapore, ohio
+    healthCheckPath: /api/settings
+    
+    # Persistent Disk storage for saved clips and video output
+    disk:
+      name: video-storage
+      mountPath: /app/clips_output
+      sizeGB: 10
+
+    envVars:
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: WHISPER_CACHE_DIR
+        value: "/root/.cache/whisper"
+      
+      # Optional API Keys (configure securely in Render Dashboard)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: PIXABAY_API_KEY
+        sync: false
+      - key: YOUTUBE_COOKIES_B64
+        sync: false
