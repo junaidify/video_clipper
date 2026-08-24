@@ -49,7 +49,7 @@ def create_app(test_config=None) -> Flask:
     except ImportError:
         pass
 
-    # Reverse proxy header support (Render, Railway, Cloud Load Balancers)
+    # Reverse proxy header support (Render, Cloud Load Balancers)
     try:
         from werkzeug.middleware.proxy_fix import ProxyFix
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)

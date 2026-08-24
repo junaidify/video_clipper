@@ -161,3 +161,53 @@ def get_voices_endpoint():
 @factory_bp.route("/moods", methods=["GET"])
 def get_moods_endpoint():
     return jsonify({"moods": get_mood_options()})
+
+
+@factory_bp.route("/commentary/generate", methods=["POST"])
+def generate_commentary_endpoint():
+    """Start an AI commentary voiceover generation job."""
+    data = request.get_json() or {}
+    video_path = data.get("video_path", "").strip()
+    style = data.get("style", "reaction")
+
+    if not video_path or not os.path.isfile(video_path):
+        return jsonify({"error": "Valid video_path is required"}), 400
+
+    from video_clipper.web.context import set_job, update_job, GLOBAL_THREAD_POOL
+    from video_clipper.clipping.transcriber import transcribe
+    from video_clipper.content_generation.commentary import generate_commentary
+
+    job_id = str(uuid.uuid4())[:8]
+    set_job(job_id, {"status": "transcribing", "progress": 10, "message": "Transcribing audio..."})
+
+    def _bg_commentary(jid: str, vpath: str, st: str):
+        try:
+            transcript = transcribe(vpath)
+            update_job(jid, {"status": "generating", "progress": 50, "message": "Generating AI commentary script..."})
+            script = generate_commentary(
+                transcript=transcript,
+                video_title=Path(vpath).stem,
+                video_duration=transcript.duration,
+                style=st,
+            )
+            update_job(jid, {
+                "status": "completed",
+                "progress": 100,
+                "message": "Commentary script generated",
+                "script": script.to_dict() if script else None,
+            })
+        except Exception as e:
+            update_job(jid, {"status": "error", "error": str(e)})
+
+    GLOBAL_THREAD_POOL.submit(_bg_commentary, job_id, video_path, style)
+    return jsonify({"job_id": job_id, "status": "processing"})
+
+
+@factory_bp.route("/commentary/status/<job_id>", methods=["GET"])
+def get_commentary_status(job_id: str):
+    from video_clipper.web.context import get_job_state
+    state = get_job_state(job_id)
+    if not state:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(state)
+

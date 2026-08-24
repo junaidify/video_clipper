@@ -23,6 +23,7 @@ def youtube_status():
     })
 
 
+@youtube_bp.route("/api/youtube/auth", methods=["GET"])
 @youtube_bp.route("/api/youtube/auth-url", methods=["GET"])
 def youtube_auth_url():
     if not is_configured():
@@ -31,7 +32,7 @@ def youtube_auth_url():
     redirect_uri = request.host_url.rstrip("/") + "/oauth2callback"
     try:
         url = get_auth_url(redirect_uri)
-        return jsonify({"auth_url": url})
+        return jsonify({"auth_url": url, "url": url})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -57,12 +58,13 @@ def youtube_disconnect():
 
 
 @youtube_bp.route("/api/youtube/upload", methods=["POST"])
+@youtube_bp.route("/api/youtube/upload-single", methods=["POST"])
 def upload_single_video():
     if not is_authenticated():
         return jsonify({"error": "Not authenticated with YouTube."}), 401
 
     data = request.get_json() or {}
-    file_path = data.get("file_path", "").strip()
+    file_path = data.get("file_path", "").strip() or data.get("clip_path", "").strip()
     title = data.get("title", "").strip()
 
     if not file_path:
@@ -115,6 +117,7 @@ def upload_status(job_id: str):
 
 
 @youtube_bp.route("/api/youtube/suggest-metadata", methods=["POST"])
+@youtube_bp.route("/api/youtube/generate-metadata", methods=["POST"])
 def suggest_metadata():
     data = request.get_json() or {}
     clip_info = data.get("clip", {})
@@ -124,3 +127,14 @@ def suggest_metadata():
 
     meta = generate_clip_metadata(clip_info, source_title, clip_number, total_clips)
     return jsonify(meta)
+
+
+@youtube_bp.route("/api/youtube/generate-metadata-batch", methods=["POST"])
+def suggest_metadata_batch():
+    data = request.get_json() or {}
+    clips = data.get("clips", [])
+    source_title = data.get("source_title", "")
+    results = []
+    for i, clip in enumerate(clips, 1):
+        results.append(generate_clip_metadata(clip, source_title, i, len(clips)))
+    return jsonify({"metadata": results})

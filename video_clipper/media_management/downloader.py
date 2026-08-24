@@ -231,10 +231,21 @@ def _build_ydl_opts(
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
-        "retries": 3,
-        "fragment_retries": 3,
+        "retries": 5,
+        "fragment_retries": 5,
         "socket_timeout": 30,
         "overwrites": True,
+        "geo_bypass": True,
+        "nocheckcertificate": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios", "mweb", "web_embedded", "tv", "web"],
+            }
+        },
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
         "postprocessors": [{
             "key": "FFmpegVideoConvertor",
             "preferedformat": "mp4",
@@ -311,6 +322,17 @@ def get_video_info(url: str) -> Optional[dict]:
                 "noplaylist": True,
                 "socket_timeout": 15,
                 "extract_flat": "in_playlist",
+                "geo_bypass": True,
+                "nocheckcertificate": True,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android", "ios", "mweb", "web_embedded", "tv", "web"],
+                    }
+                },
+                "http_headers": {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
             }
             if cookie_src:
                 stype, sval = cookie_src

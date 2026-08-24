@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dockerfile: Video Auto-Clipper & Production Studio
-# Optimized for Railway.app, Render, DigitalOcean, Hetzner, and Docker VPS
+# Optimized for Render.com, DigitalOcean, Hetzner, and Docker VPS
 # ==============================================================================
 
 FROM python:3.12-slim AS base
@@ -45,7 +45,7 @@ RUN mkdir -p uploads clips_output video_library training_sessions
 
 EXPOSE ${PORT}
 
-# Healthcheck for container orchestrators (Railway, Render, Docker Swarm, K8s)
+# Healthcheck for container orchestrators (Render, Docker Swarm, K8s)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:${PORT}/api/settings || exit 1
 

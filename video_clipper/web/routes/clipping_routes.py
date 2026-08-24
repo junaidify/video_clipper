@@ -35,6 +35,7 @@ clipping_bp = Blueprint("clipping_api", __name__, url_prefix="/api")
 
 
 @clipping_bp.route("/clip", methods=["POST"])
+@clipping_bp.route("/smart-clip", methods=["POST"])
 def start_smart_clipping():
     """Start an asynchronous Smart AI Clipping job."""
     job_id = str(uuid.uuid4())[:8]
@@ -276,3 +277,42 @@ def get_full_video_status(job_id: str):
 def cancel_clipping_job(job_id: str):
     set_job(job_id, status="cancelled", message="Job cancelled by user.")
     return jsonify({"success": True})
+
+
+@clipping_bp.route("/clips/list/<job_id>", methods=["GET"])
+def list_clips_for_job(job_id: str):
+    """List all extracted clips for a completed smart-clip job."""
+    state = get_job_state(job_id)
+    if not state:
+        return jsonify({"error": "Job not found"}), 404
+
+    clips = state.get("clips", [])
+    output_dir = state.get("output_dir", "")
+    return jsonify({
+        "status": state.get("status", "unknown"),
+        "job_id": job_id,
+        "clips": clips,
+        "clip_count": len(clips),
+        "output_dir": output_dir,
+    })
+
+
+@clipping_bp.route("/clips/delete", methods=["POST", "DELETE"])
+def delete_clip_file():
+    """Delete a generated clip file from disk."""
+    clip_path = request.form.get("clip_path") or request.args.get("clip_path")
+    if not clip_path and request.is_json:
+        clip_path = request.json.get("clip_path")
+
+    if not clip_path:
+        return jsonify({"error": "clip_path is required"}), 400
+
+    if os.path.isfile(clip_path):
+        try:
+            os.remove(clip_path)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    return jsonify({"error": "Clip file not found"}), 404
+
