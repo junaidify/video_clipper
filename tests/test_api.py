@@ -1,4 +1,4 @@
-"""Tests for Flask app API routes."""
+"""Tests for video_clipper.web API routes."""
 import sys
 import json
 from pathlib import Path
@@ -7,16 +7,16 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
+pytest.importorskip("flask")
+from video_clipper.web import create_app
+
 
 @pytest.fixture
 def client():
-    """Flask test client with heavy dependencies mocked."""
-    with patch("media.library.VideoLibrary"), \
-         patch("training.trainer.PatternTrainer"):
-        from app import app as flask_app
-        flask_app.config["TESTING"] = True
-        with flask_app.test_client() as c:
-            yield c
+    """Flask test client."""
+    app = create_app({"TESTING": True})
+    with app.test_client() as c:
+        yield c
 
 
 class TestLandingPage:
@@ -34,10 +34,10 @@ class TestSettingsAPI:
         resp = client.get("/api/settings")
         assert resp.status_code == 200
         data = resp.get_json()
-        assert "ffmpeg_installed" in data
-        assert "llm_available" in data
-        assert "is_local" in data
-        assert "cookie_auth" in data
+        assert "ffmpeg" in data
+        assert "device" in data
+        assert "whisper" in data
+        assert "llm" in data
 
 
 class TestPlatformsAPI:
@@ -45,9 +45,7 @@ class TestPlatformsAPI:
         resp = client.get("/api/platforms")
         assert resp.status_code == 200
         data = resp.get_json()
-        assert "fully_supported" in data
-        assert "not_supported" in data
-        assert "total_platforms" in data
+        assert "platforms" in data
 
 
 class TestCheckUrlAPI:
@@ -55,7 +53,7 @@ class TestCheckUrlAPI:
         resp = client.post("/api/check-url",
                            data=json.dumps({"url": ""}),
                            content_type="application/json")
-        assert resp.status_code == 200
+        assert resp.status_code == 400
         data = resp.get_json()
         assert data["valid"] is False
 
@@ -63,6 +61,7 @@ class TestCheckUrlAPI:
         resp = client.post("/api/check-url",
                            data=json.dumps({"url": "not-a-url"}),
                            content_type="application/json")
+        assert resp.status_code == 400
         data = resp.get_json()
         assert data["valid"] is False
 
@@ -74,7 +73,7 @@ class TestCheckUrlAPI:
         assert data["valid"] is False
         assert "DRM" in data["error"]
 
-    @patch("app.get_video_info")
+    @patch("video_clipper.web.routes.system_routes.get_video_info")
     def test_valid_url_with_mock(self, mock_info, client):
         mock_info.return_value = {
             "title": "Test Video", "duration": 120,
@@ -83,6 +82,7 @@ class TestCheckUrlAPI:
         resp = client.post("/api/check-url",
                            data=json.dumps({"url": "https://youtube.com/watch?v=abc"}),
                            content_type="application/json")
+        assert resp.status_code == 200
         data = resp.get_json()
         assert data["valid"] is True
         assert data["info"]["title"] == "Test Video"
@@ -99,5 +99,4 @@ class TestJobStatus:
 class TestEditorPage:
     def test_editor_without_params(self, client):
         resp = client.get("/editor")
-        # Should either render or redirect, both are valid
-        assert resp.status_code in (200, 302, 400)
+        assert resp.status_code == 200

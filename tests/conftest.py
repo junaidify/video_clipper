@@ -13,9 +13,9 @@ PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from core.transcriber import Transcript, TranscriptSegment
-from core.analyzer import ClipCandidate
-from config import PipelineConfig, TranscriberConfig, AnalyzerConfig, ClipperConfig
+from video_clipper.clipping.transcriber import Transcript, TranscriptSegment
+from video_clipper.clipping.analyzer import ClipCandidate
+from video_clipper.config import PipelineConfig, TranscriberConfig, AnalyzerConfig, ClipperConfig
 
 
 @pytest.fixture
@@ -92,10 +92,8 @@ def mock_video_path(tmp_path):
 
 @pytest.fixture
 def flask_client():
-    """Flask test client with mocked heavy dependencies."""
-    with patch("media.library.VideoLibrary"), \
-         patch("training.trainer.PatternTrainer"):
-        from app import app as flask_app
-        flask_app.config["TESTING"] = True
-        with flask_app.test_client() as client:
-            yield client
+    """Flask test client."""
+    from video_clipper.web import create_app
+    app = create_app({"TESTING": True})
+    with app.test_client() as client:
+        yield client

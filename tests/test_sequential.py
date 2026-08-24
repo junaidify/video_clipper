@@ -1,10 +1,10 @@
-"""Tests for modes.sequential_clipper module."""
+"""Tests for video_clipper.clipping.sequential_splitter module."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
-from modes.sequential_clipper import compute_split_points, SequentialConfig
+from video_clipper.clipping.sequential_splitter import compute_split_points, SequentialConfig
 
 
 class TestSequentialConfig:

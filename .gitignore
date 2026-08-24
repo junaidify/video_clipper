@@ -8,6 +8,7 @@ training_sessions/
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
 .venv/
 venv/
 *.egg-info/
@@ -26,6 +27,8 @@ Thumbs.db
 graphify-out/
 design_philosophy.md
 CLAUDE.md
+decision.md
+upload_status.json
 
 # ── Documents ──
 .youtube_token.json

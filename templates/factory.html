@@ -447,7 +447,7 @@ body::after {
   box-shadow: 0 16px 48px rgba(0,0,0,0.3);
 }
 .output-card video {
-  width: 100%; aspect-ratio: 9/16; object-fit: cover; background: #000;
+  width: 100%; max-height: 480px; object-fit: contain; background: #000;
 }
 .output-card .output-info { padding: 18px; }
 .output-card .output-title {
@@ -532,6 +532,10 @@ body::after {
       <span>🎬</span> Generate
     </div>
     <div class="tab-sep"></div>
+    <div class="tab-item" onclick="switchTab('custom', this)">
+      <span>✍️</span> Custom
+    </div>
+    <div class="tab-sep"></div>
     <div class="tab-item" onclick="switchTab('output', this)">
       <span>📦</span> Output
     </div>
@@ -614,6 +618,13 @@ body::after {
                 <span class="range-val" id="dur-val">45s</span>
               </div>
             </div>
+            <div class="form-group">
+              <label>VIDEO FORMAT</label>
+              <select id="gen-format">
+                <option value="9:16">Short Form (9:16 Portrait)</option>
+                <option value="16:9">Long Form (16:9 Landscape)</option>
+              </select>
+            </div>
           </div>
 
           <div class="card">
@@ -689,6 +700,97 @@ body::after {
       </div>
     </div>
 
+    <!-- ═══ CUSTOM STORY PANEL ═══ -->
+    <div id="panel-custom" class="panel">
+      <div class="panel-hero">
+        <div class="panel-badge">🎨 CUSTOM STORY</div>
+        <h1 class="panel-title">BUILD YOUR OWN</h1>
+        <p class="panel-desc">Provide your own title, script, and images. The AI will assemble them into a storytelling video.</p>
+      </div>
+
+      <div class="two-col">
+        <!-- LEFT: Config -->
+        <div>
+          <div class="card">
+            <div class="card-header">📝 STORY</div>
+            <div class="form-group">
+              <label>TITLE / QUESTION</label>
+              <input type="text" id="cust-title" placeholder="e.g. What is the scariest thing that happened to you?">
+            </div>
+            <div class="form-group">
+              <label>SCRIPT</label>
+              <textarea id="cust-script" placeholder="Enter the full story..." style="min-height: 180px;"></textarea>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">🖼️ VISUALS & AUDIO</div>
+            <div class="form-group">
+              <label>UPLOAD IMAGES (1 or more)</label>
+              <input type="file" id="cust-images" multiple accept="image/*" style="padding: 10px; background: var(--bg-elevated);">
+            </div>
+            <div class="form-group">
+              <label>BACKGROUND MUSIC MOOD</label>
+              <select id="cust-music-mood"></select>
+            </div>
+            <div class="form-group">
+              <label>MUSIC VOLUME</label>
+              <div class="range-group">
+                <input type="range" id="cust-music-vol" min="0" max="40" value="15" step="1"
+                       oninput="document.getElementById('cust-mvol-val').textContent=this.value+'%'">
+                <span class="range-val" id="cust-mvol-val">15%</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>VIDEO FORMAT</label>
+              <select id="cust-format">
+                <option value="9:16">Short Form (9:16 Portrait)</option>
+                <option value="16:9">Long Form (16:9 Landscape)</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-full" onclick="startCustomGeneration()" id="btn-custom-generate">
+            ⚡ ASSEMBLE VIDEO
+          </button>
+        </div>
+
+        <!-- RIGHT: Preview / Progress -->
+        <div>
+          <!-- Progress -->
+          <div id="custom-progress" class="card progress-container" style="display:none">
+            <div class="progress-ring">
+              <svg width="160" height="160">
+                <circle class="bg" cx="80" cy="80" r="70"/>
+                <circle class="fg" id="cust-progress-circle" cx="80" cy="80" r="70"
+                        stroke-dasharray="440" stroke-dashoffset="440"/>
+              </svg>
+              <div class="progress-percent" id="cust-progress-percent">0%</div>
+            </div>
+            <div class="progress-stage" id="cust-progress-stage">Initializing...</div>
+            <div class="progress-detail" id="cust-progress-detail"></div>
+            <div class="stage-dots" id="cust-stage-dots">
+              <div class="stage-dot" title="Script"></div>
+              <div class="stage-dot" title="Visuals"></div>
+              <div class="stage-dot" title="TTS"></div>
+              <div class="stage-dot" title="Editing"></div>
+              <div class="stage-dot" title="Music"></div>
+              <div class="stage-dot" title="Done"></div>
+            </div>
+          </div>
+
+          <!-- Empty state -->
+          <div id="custom-empty" class="card">
+            <div class="empty-state">
+              <div class="empty-icon">🎨</div>
+              <h3>BRING YOUR STORY TO LIFE</h3>
+              <p>Enter your script, upload images, and we'll generate the voiceover and assemble the video with captions.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ OUTPUT PANEL ═══ -->
     <div id="panel-output" class="panel">
       <div class="panel-hero">
@@ -748,7 +850,7 @@ async function loadConfig() {
       grid.appendChild(card);
     });
 
-    // Render music moods
+    // Render music moods (Auto Generator)
     const moodSel = document.getElementById('gen-music-mood');
     moodSel.innerHTML = '';
     (d.music_moods || []).forEach(m => {
@@ -757,6 +859,17 @@ async function loadConfig() {
       opt.textContent = `${m.icon||''} ${m.label} — ${m.description||''}`;
       if (m.id === 'upbeat') opt.selected = true;
       moodSel.appendChild(opt);
+    });
+
+    // Render music moods (Custom Generator)
+    const custMoodSel = document.getElementById('cust-music-mood');
+    custMoodSel.innerHTML = '';
+    (d.music_moods || []).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = `${m.icon||''} ${m.label} — ${m.description||''}`;
+      if (m.id === 'upbeat') opt.selected = true;
+      custMoodSel.appendChild(opt);
     });
   } catch(e) { console.error('Config load error:', e); }
 }
@@ -863,6 +976,7 @@ async function startGeneration() {
     style: selectedStyle,
     music_mood: document.getElementById('gen-music-mood').value,
     music_volume: parseInt(document.getElementById('gen-music-vol').value) / 100,
+    video_format: document.getElementById('gen-format').value,
   };
 
   try {
@@ -888,7 +1002,7 @@ async function startGeneration() {
 
     // Clear existing poll timer
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-    pollTimer = setInterval(() => pollJobStatus(currentJobId), 2000);
+    pollTimer = setInterval(() => pollJobStatus('gen'), 2000);
 
   } catch(e) {
     showToast('Generation error: ' + e.message, 'error');
@@ -898,23 +1012,86 @@ async function startGeneration() {
   }
 }
 
-async function pollJobStatus(jobId) {
+// ═══ CUSTOM STORY GENERATION ═══
+async function startCustomGeneration() {
+  const title = document.getElementById('cust-title').value.trim();
+  const script = document.getElementById('cust-script').value.trim();
+  const images = document.getElementById('cust-images').files;
+  const musicMood = document.getElementById('cust-music-mood').value;
+  const musicVol = parseInt(document.getElementById('cust-music-vol').value) / 100;
+
+  if (!title || !script) { showToast('Please provide a title and script.', 'error'); return; }
+  if (images.length === 0) { showToast('Please upload at least 1 image.', 'error'); return; }
+
+  const btn = document.getElementById('btn-custom-generate');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> UPLOADING & ASSEMBLING...';
+
+  document.getElementById('custom-empty').style.display = 'none';
+  document.getElementById('custom-progress').style.display = 'block';
+  document.getElementById('cust-progress-percent').textContent = '0%';
+  document.getElementById('cust-progress-circle').style.strokeDashoffset = '440';
+  document.querySelectorAll('#cust-stage-dots .stage-dot').forEach(d => d.classList.remove('active','done'));
+
   try {
-    const r = await fetch(`/api/factory/job/${jobId}`);
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('script', script);
+    formData.append('music_mood', musicMood);
+    formData.append('music_volume', musicVol);
+    formData.append('video_format', document.getElementById('cust-format').value);
+    
+    for (let i = 0; i < images.length; i++) {
+      formData.append('images', images[i]);
+    }
+
+    const r = await fetch('/api/factory/custom_generate', {
+      method: 'POST',
+      body: formData
+    });
+    const d = await r.json();
+
+    if (!d.success) { showToast(d.error || 'Generation failed', 'error'); return; }
+
+    currentJobId = d.job_id;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    pollTimer = setInterval(() => pollJobStatus('cust'), 2000);
+
+  } catch(e) {
+    showToast('Generation error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '⚡ ASSEMBLE VIDEO';
+  }
+}
+
+// ═══ PROGRESS POLLING ═══
+async function pollJobStatus(prefix = 'gen') {
+  if (!currentJobId) return;
+
+  try {
+    const r = await fetch(`/api/factory/job/${currentJobId}`);
+    if (r.status === 404) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      currentJobId = null;
+      return;
+    }
     const d = await r.json();
     if (!d.success || !d.job) return;
 
     const job = d.job;
-    updateProgress(job);
+    updateProgress(job, prefix);
 
-    // Show script preview when available
-    if (job.script && !document.getElementById('script-preview').dataset.loaded) {
+    // Show script preview when available (only in gen mode)
+    if (prefix === 'gen' && job.script && !document.getElementById('script-preview').dataset.loaded) {
       renderScriptPreview(job.script);
     }
 
     if (job.status === 'done' || job.status === 'failed') {
       clearInterval(pollTimer);
       pollTimer = null;
+      currentJobId = null;
 
       if (job.status === 'done') {
         showToast('Video generated successfully!', 'success');
@@ -927,12 +1104,15 @@ async function pollJobStatus(jobId) {
   } catch(e) { console.error('Poll error:', e); }
 }
 
-function updateProgress(job) {
+function updateProgress(job, prefix = 'gen') {
   const pct = job.progress || 0;
-  const circle = document.getElementById('progress-circle');
-  circle.style.strokeDashoffset = 440 - (pct / 100) * 440;
+  
+  let circlePrefix = prefix === 'cust' ? 'cust-' : '';
+  const circle = document.getElementById(`${circlePrefix}progress-circle`);
+  if (circle) circle.style.strokeDashoffset = 440 - (pct / 100) * 440;
 
-  document.getElementById('progress-percent').textContent = Math.round(pct) + '%';
+  const pctEl = document.getElementById(`${circlePrefix}progress-percent`);
+  if (pctEl) pctEl.textContent = Math.round(pct) + '%';
 
   const stageLabels = {
     pending: 'Initializing...',
@@ -944,19 +1124,25 @@ function updateProgress(job) {
     done: '✅ Complete!',
     failed: '❌ Failed',
   };
-  document.getElementById('progress-stage').textContent = stageLabels[job.status] || job.status;
-  document.getElementById('progress-detail').textContent =
-    job.status === 'failed' ? (job.error || job.message || 'Unknown error') : (job.message || '');
+  
+  const stageEl = document.getElementById(`${circlePrefix}progress-stage`);
+  if (stageEl) stageEl.textContent = stageLabels[job.status] || job.status;
+  
+  const detailEl = document.getElementById(`${circlePrefix}progress-detail`);
+  if (detailEl) detailEl.textContent = job.status === 'failed' ? (job.error || job.message || 'Unknown error') : (job.message || '');
 
   // Update stage dots
   const stages = ['scripting','visuals','tts','editing','music','done'];
-  const dots = document.querySelectorAll('.stage-dot');
-  const currentIdx = stages.indexOf(job.status);
-  dots.forEach((dot, i) => {
-    dot.classList.remove('active', 'done');
-    if (i < currentIdx) dot.classList.add('done');
-    else if (i === currentIdx) dot.classList.add('active');
-  });
+  const dotsContainer = document.getElementById(`${circlePrefix}stage-dots`);
+  if (dotsContainer) {
+    const dots = dotsContainer.querySelectorAll('.stage-dot');
+    const currentIdx = stages.indexOf(job.status);
+    dots.forEach((dot, i) => {
+      dot.classList.remove('active', 'done');
+      if (i < currentIdx) dot.classList.add('done');
+      else if (i === currentIdx) dot.classList.add('active');
+    });
+  }
 }
 
 function renderScriptPreview(script) {

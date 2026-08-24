@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-clipper"
+version = "2.0.0"
+description = "AI-powered short-form video auto-clipper and content creation studio"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Video Clipper Team" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "openai-whisper>=20231117",
+    "flask>=3.0",
+    "python-dotenv>=1.0",
+    "yt-dlp>=2024.0",
+    "gunicorn>=22.0",
+    "waitress>=3.0",
+    "google-auth>=2.20",
+    "google-auth-oauthlib>=1.0",
+    "google-api-python-client>=2.90",
+    "edge-tts>=6.1",
+    "Pillow>=10.0",
+    "requests>=2.31",
+    "groq>=0.9",
+    "google-generativeai>=0.7",
+    "openai>=1.30",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+video-clipper = "main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["video_clipper*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]

@@ -1,11 +1,11 @@
-"""Tests for core.analyzer module."""
+"""Tests for video_clipper.clipping.analyzer module."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
-from core.analyzer import ContentAnalyzer, ClipCandidate
-from config import AnalyzerConfig
+from video_clipper.clipping.analyzer import ContentAnalyzer, ClipCandidate
+from video_clipper.config import AnalyzerConfig
 
 
 class TestTokenize:
