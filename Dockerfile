@@ -66,8 +66,8 @@ CMD bash -c '\
     else \
         echo "[startup] No YOUTUBE_COOKIES_B64 configured (standard YouTube downloads active)"; \
     fi && \
-    exec gunicorn --bind 0.0.0.0:${PORT} \
-        --workers 2 \
+    exec gunicorn --bind 0.0.0.0:${PORT:-10000} \
+        --workers 1 \
         --threads 4 \
         --timeout 600 \
         --max-requests 200 \
