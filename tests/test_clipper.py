@@ -1,4 +1,4 @@
-"""Tests for core.clipper module (all FFmpeg calls mocked)."""
+"""Tests for video_clipper.clipping.clipper module (all FFmpeg calls mocked)."""
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -6,20 +6,20 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
-from core.analyzer import ClipCandidate
-from config import ClipperConfig
+from video_clipper.clipping.analyzer import ClipCandidate
+from video_clipper.config import ClipperConfig
 
 
 # Patch ffmpeg verification globally for all tests in this module
 @pytest.fixture(autouse=True)
 def mock_ffmpeg():
-    with patch("core.clipper.subprocess.run") as mock_run:
+    with patch("video_clipper.clipping.clipper.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         yield mock_run
 
 
 def _make_clipper(config=None):
-    from core.clipper import VideoClipper
+    from video_clipper.clipping.clipper import VideoClipper
     return VideoClipper(config)
 
 
@@ -111,7 +111,7 @@ class TestBuildFadeFilter:
 
 class TestClipResult:
     def test_clip_result_dataclass(self):
-        from core.clipper import ClipResult
+        from video_clipper.clipping.clipper import ClipResult
         r = ClipResult(clip_number=1, output_path="/out.mp4", start=0.0,
                        end=30.0, duration=30.0, score=0.8, reason="test",
                        hook_text="hello", success=True)

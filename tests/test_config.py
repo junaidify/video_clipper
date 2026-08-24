@@ -1,9 +1,9 @@
-"""Tests for config.py dataclasses and their defaults."""
+"""Tests for video_clipper.config dataclasses and their defaults."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import TranscriberConfig, AnalyzerConfig, ClipperConfig, PipelineConfig
+from video_clipper.config import TranscriberConfig, AnalyzerConfig, ClipperConfig, PipelineConfig
 
 
 class TestTranscriberConfig:

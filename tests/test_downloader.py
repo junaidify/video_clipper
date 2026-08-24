@@ -1,10 +1,10 @@
-"""Tests for media.downloader module (no network calls)."""
+"""Tests for video_clipper.media_management.downloader module (no network calls)."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
-from media.downloader import (
+from video_clipper.media_management.downloader import (
     is_valid_url, is_drm_platform, _extract_domain, _detect_platform,
     DownloadResult,
 )
@@ -36,7 +36,7 @@ class TestIsValidUrl:
 class TestIsDrmPlatform:
     @pytest.mark.parametrize("url,expected", [
         ("https://www.netflix.com/watch/12345", "Netflix"),
-        ("https://www.disneyplus.com/video/abc", "Disneyplus"),
+        ("https://www.disneyplus.com/video/abc", "Disney+"),
         ("https://www.hulu.com/watch/xyz", "Hulu"),
         ("https://max.com/movie/123", "Max"),
     ])

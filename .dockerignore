@@ -1,29 +1,36 @@
-# Data dirs (rebuilt at runtime)
+# Runtime Data Directories
 uploads/
 clips_output/
 video_library/
 training_sessions/
 
-# Python
+# Python & Caches
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
 .venv/
 venv/
 env/
+*.egg-info/
+downloaded_wheels/
 
-# IDE / OS
+# IDE / Editor Files
 .vscode/
 .idea/
 *.swp
 .DS_Store
 Thumbs.db
 
-# Git
+# Git & Documentation
 .git/
 .gitignore
-
-# Misc
 *.md
+!README.md
+decision.md
+
+# Logs & Tokens
 *.log
-graphify-out/
+.youtube_token.json
+.*_token.json
+.env

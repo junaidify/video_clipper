@@ -3,7 +3,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "./Dockerfile"
 
 [deploy]
-healthcheckPath = "/"
+healthcheckPath = "/api/settings"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
