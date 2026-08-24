@@ -65,9 +65,10 @@ video_clipper/
 ├── video_library/          ← Persistent video library (gitignored)
 ├── training_sessions/      ← Training data from pattern learning (gitignored)
 │
-├── Dockerfile              ← Production Docker image (Ubuntu + FFmpeg + gunicorn)
-├── railway.toml            ← Railway deployment config
+├── Dockerfile              ← Production Docker image (Python 3.12 + FFmpeg + gunicorn)
+├── render.yaml             ← Render.com deployment Blueprint config
 ├── requirements.txt        ← Python dependencies
+├── pyproject.toml          ← PEP 517/518/621 packaging
 ├── .env.example            ← Environment variable template
 ├── .gitignore              ← Git exclusions
 └── .dockerignore           ← Docker build exclusions
@@ -79,7 +80,7 @@ video_clipper/
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.10+, Flask |
+| Backend | Python 3.12+, Flask |
 | Video Processing | FFmpeg (system binary) |
 | Transcription | OpenAI Whisper (local, no API calls) |
 | NLP Analysis | TF-IDF, pattern matching, hook detection |
@@ -87,7 +88,7 @@ video_clipper/
 | Frontend | Vanilla HTML/CSS/JS (no build step) |
 | Download | yt-dlp |
 | Production Server | Gunicorn |
-| Deployment | Docker, Railway |
+| Deployment | Docker, Render.com |
 
 ---
 
@@ -197,22 +198,22 @@ All LLM keys are optional. The NLP-based analyzer works without any API keys. LL
 
 ---
 
-## Deployment (Railway)
+## Deployment (Render.com)
 
-The project includes production-ready deployment files for Railway:
+The project includes a production-ready Blueprint specification for Render:
 
 ```bash
 # Push to GitHub first, then:
-# 1. Go to railway.app → New Project → Deploy from GitHub
-# 2. Set environment variables in the dashboard:
+# 1. Go to dashboard.render.com → New + → Blueprint
+# 2. Select this repository and branch
+# 3. Render auto-configures the Docker container and 10GB persistent disk
+# 4. Add optional API keys in the dashboard:
 #    GROQ_API_KEY, GEMINI_API_KEY, FLASK_SECRET_KEY
-# 3. Add a volume mounted at /app/video_library for persistence
-# 4. Deploy — Railway auto-detects the Dockerfile
 ```
 
-The Dockerfile installs FFmpeg, system fonts, and runs the app via gunicorn with a 300-second timeout to handle long video processing jobs.
+The Dockerfile installs FFmpeg, font caches, pre-caches the Whisper AI base model, and runs the app via Gunicorn with a 600-second timeout to handle long video processing jobs.
 
-See `Dockerfile`, `railway.toml`, and `.dockerignore` for the full configuration.
+See `Dockerfile`, `render.yaml`, and `.dockerignore` for the full configuration.
 
 ---
 
